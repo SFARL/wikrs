@@ -25,7 +25,8 @@
   2. 每条跑我们的引擎，比对结果。
   3. **能过的 = 我们声明的支持范围；过不了的 = 明确声明"不支持"并归档原因。**
 - **产出**：一份 `SUPPORTED.md`（自动生成）——支持范围清单，本身就是 D2 诚实划界的证据。
-- **落点**：`tests/parser_tests.rs` + `tests/fixtures/parserTests.txt`。
+- **⚠️ 许可**：`parserTests.txt` 是 **GPL**，**不能 vendor 进** MIT/Apache 仓库。改为测试时下载（`cargo xtask fetch-parser-tests` 拉到 **.gitignore 的** `tests/fixtures/`，不提交）。详见 [DESIGN.md](DESIGN.md) §11。
+- **落点**：`tests/parser_tests.rs`（用例读取器 + 比对）；fixture 由 `xtask fetch-parser-tests` 拉取，**不入库**。
 - **Stage 映射**：Stage 1 只可能过纯文本类用例；Stage 2 AST 起来后覆盖率才会涨。**把通过率当进度指标。**
 
 ### 层 2 — 规模验证：真实 dump 差分测试（声誉证据来源）

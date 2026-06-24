@@ -53,12 +53,13 @@
 ## Tasks
 
 > 这是 roadmap 层的 task 拆分（目标 / 涉及文件 / 做什么 / 如何验证）。
-> **真正开工执行 Stage 1 时**，会用 `superpowers:writing-plans` 生成一份 code-complete 的 TDD 实施计划（每步含失败测试→实现→通过→commit），存到 `docs/superpowers/plans/`。
+> **code-complete TDD 实施计划（每步含失败测试→实现→通过→commit）已生成：**
+> 👉 [../superpowers/plans/2026-06-24-stage-1-extractor.md](../superpowers/plans/2026-06-24-stage-1-extractor.md)。下面的 Task 编号与计划对应。
 
-### Task 0：命名占用核查 + 工程初始化
-- **文件**：`Cargo.toml`、`src/lib.rs`、`src/main.rs`、`.gitignore`、`rustfmt.toml`、`clippy` 配置
-- **做什么**：查 `wikrs`/`mwx`/`unwiki` 在 crates.io + GitHub + 域名的占用，锁定名字；`cargo init`；接 CI（test/clippy/fmt）。
-- **验证**：`cargo build` 通过；CI 绿；名字确定并记入 WORKLOG + DESIGN §9。
+### Task 0：命名占用核查 + 工程初始化 ✅ 完成（2026-06-24）
+- **文件**：`Cargo.toml`、`src/lib.rs`、`src/main.rs`、`src/dump.rs`、`src/extract.rs`、`.github/workflows/ci.yml`
+- **做了什么**：crates.io 核查（`wikrs` 可用），锁名 `wikrs`；建 lib+bin 骨架（模块 stub）；CI = fmt + clippy(`-D warnings`) + test。
+- **验证**：本地 `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test` / `cargo build` 全绿；`wikrs --help` 可用。结果已记入 WORKLOG + DESIGN §9。
 
 ### Task 1：dump 流式读取
 - **文件**：`src/dump/`（`reader.rs`、`page.rs`）、`tests/dump.rs`
