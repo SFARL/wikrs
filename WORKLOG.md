@@ -170,3 +170,14 @@
 - **Benchmark:** strip 不变 ~118 MiB/s；2 MB 畸形输入 ~150 ms（线性，非平方）。
 - **Regression?** none。
 - **⚠️ 待用户决定:** 发 `0.1.0` 到 crates.io 会让**源码公开**——与当前 **private** 仓库冲突。两条路：① 转 public 再发布；② 先留私有，晚点发。我不会擅自 publish。
+
+---
+
+## [2026-06-24] Stage 2 起步：AST + plain 渲染器（thin slice 地基）
+
+- **决定:** **不转 public、不发布**——`PROJECT-HANDOFF.md` 是内部战略备忘，公开到"声誉"项目反而减分；仓库留 **private**，转头做 Stage 2（真正的声誉项目）。GitHub 可见性未改。
+- **Change:** 新增 `src/ast.rs`（`Node<'a>` 枚举，`Cow<'a,str>` borrow-friendly：Text/Bold/Italic/Link/Heading/Paragraph + **`Unsupported` 占位**——范围外构造保留原文、配诊断，不假装）；`src/render.rs`（`render::plain(&[Node])`）。先把"AST → 文本"这端立起来，再用 tokenizer/parser 去填（thin vertical slice，避免一上来奔完整引擎淹死）。
+- **Tests:** `render::renders_ast_to_plain_text`（手构 AST → 纯文本）。全量 **20 测试绿**，clippy `-D warnings` 干净。
+- **Benchmark:** 不在 benched 路径（strip 仍 ~118 MiB/s）。Stage 2 串通后把 `render::plain` 接进 bench 与 strip 对比。
+- **Regression?** none。
+- **下一步:** tokenizer（wikitext → token 流，最坏复杂度线性）→ parser（token → AST，范围外发 `Unsupported` + Diagnostic）。先做一个最小诚实子集（段落/粗斜体/标题/链接）。

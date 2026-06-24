@@ -6,6 +6,8 @@
 //! Stage 1 builds the two modules below into a `wikitext -> plain text`
 //! extractor. Stage 2 adds `tokenizer` / `parser` / `ast` / `render` / `diag`.
 
+pub mod ast;
 pub mod dump;
 pub mod extract;
 pub mod output;
+pub mod render;
