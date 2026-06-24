@@ -3,7 +3,9 @@
 //! Yields one page at a time at constant memory, filtering to article
 //! namespaces and skipping redirects.
 
-use std::io::BufRead;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -37,6 +39,17 @@ impl<R: BufRead> Pages<R> {
             buf: Vec::new(),
         }
     }
+}
+
+/// Open a dump file, transparently decompressing multistream `.bz2`.
+pub fn open(path: &Path) -> anyhow::Result<Pages<Box<dyn BufRead>>> {
+    let file = File::open(path)?;
+    let reader: Box<dyn BufRead> = if path.extension().is_some_and(|e| e == "bz2") {
+        Box::new(BufReader::new(bzip2::read::MultiBzDecoder::new(file)))
+    } else {
+        Box::new(BufReader::new(file))
+    };
+    Ok(Pages::new(reader))
 }
 
 /// Which `<page>` child we are currently accumulating text into.

@@ -107,3 +107,12 @@
 - **Regression?** none。
 - **备注:** quick-xml 0.40 去掉了 `BytesText::unescape()`，改用 `decode()` + `quick_xml::escape::unescape()`。
 - **下一步:** Task 2（`dump::open` 支持 `.xml.bz2` multistream）。
+
+---
+
+## [2026-06-24] Stage 1 Task 2：dump::open（含 .xml.bz2）
+
+- **Change:** `dump::open(path)` 按扩展名透明解压 multistream `.bz2`（bzip2 0.6 `MultiBzDecoder`），否则直读；返回 `Pages<Box<dyn BufRead>>`。
+- **Tests:** 新增 `tests/dump_open.rs`（写 `.xml` 和 `.xml.bz2` 各跑一遍，断言解出同一页）；`cargo test --all-features` 全绿。
+- **Benchmark:** 仍不在 benched 路径（dump 不进 bench）；沿用 ~304 MiB/s 基线读数，无变化。
+- **Regression?** none。
