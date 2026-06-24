@@ -144,3 +144,15 @@
 - **Benchmark:** strip 未改，~118 MiB/s 不变（CLI/looks_clean 不在 benched 路径）。
 - **Regression?** none。
 - **下一步:** Task 8（vs WikiExtractor 端到端基准，立"快一个量级"）。
+
+---
+
+## [2026-06-24] Stage 1 Task 8：vs WikiExtractor 端到端基准 ⚡ 命门数字
+
+- **Change:** xtask 加 `make-sample-dump`（从 `sample_article` 生成 N 页合成 dump，**逐标签换行**以喂 WikiExtractor 的行式解析器——单行格式会让它抽出 0 篇）+ 实现 `bench-compare`（构建 release → 分别计时 wikrs 与 WikiExtractor → 算吞吐 + speedup）。
+- **Tests:** xtask 编译 + clippy `-D warnings` 干净；既有测试全绿不受影响。
+- **Benchmark（命门）:** 8.3 MB 合成 dump（5000 篇）：**wikrs ~0.18 s / 47 MB/s vs WikiExtractor ~3.9 s / 2.1 MB/s → ~22× 更快**（连跑 3 次稳定 22.0–22.1×）。strip 微基准不变 ~118 MiB/s。
+- **Regression?** none。
+- **意义:** **保底档核心论点"又快一个量级"实测成立（实为 20×+）。** README 头条从"roughly an order of magnitude"改成实测 ~22×。
+- **诚实标注:** 合成 dump = 同一篇文章重复，真实异构 dump 比例会变；WikiExtractor 的启动/模板预处理有固定开销，大 dump 上会摊薄——但量级成立。
+- **下一步:** Task 9（fuzz + README usage + 首发 0.1.0）。Stage 1 接近收尾。

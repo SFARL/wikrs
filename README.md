@@ -14,7 +14,7 @@ The de-facto tool for that, [WikiExtractor](https://github.com/attardi/wikiextra
 
 **wikrs** is a Rust take, delivered in two tiers:
 
-- **Floor — a faster WikiExtractor.** wikitext → clean plain text, roughly an order of magnitude faster (it's Rust). Drop-in for the "I just need the text" use case.
+- **Floor — a faster WikiExtractor.** wikitext → clean plain text, **measured ~22× faster** than WikiExtractor on an 8 MB dump (it's Rust; see [Benchmarks](#benchmarks--test-status)). Drop-in for the "I just need the text" use case.
 - **Ceiling — a modern wikitext engine.** A structured AST that preserves tables, link anchor text, and document structure — and that **emits a diagnostic when it hits input it can't faithfully handle, instead of silently corrupting the output.**
 
 ## Why is this hard? (and why that's the moat)
@@ -50,6 +50,7 @@ The headline metric we're building toward: **"X% structurally identical to Parso
 _Last updated: 2026-06-24_
 
 - **Tests:** green — `cargo test --all-features`
+- **⚡ vs WikiExtractor** (end-to-end, 8.3 MB synthetic dump = 5000 articles, Apple Silicon): wikrs **~22× faster** — ~0.18 s / 47 MB/s vs WikiExtractor ~3.9 s / 2.1 MB/s. Reproduce: `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml`. *(Synthetic dump = the sample article repeated; real heterogeneous dumps will differ — the order of magnitude is the point.)*
 - **Sample-article throughput** (criterion, `benches/compare.rs`):
 
   | Implementation | Throughput | Notes |
