@@ -1,6 +1,9 @@
 # Rust
 /target
 /fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/Cargo.lock
 **/*.rs.bk
 
 # Large Wikipedia dumps & generated output — never commit these

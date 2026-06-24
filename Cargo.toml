@@ -1,6 +1,6 @@
 [package]
 name = "wikrs"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 description = "Fast, honest wikitext extraction and parsing in Rust"
 repository = "https://github.com/SFARL/wikrs"
@@ -39,4 +39,5 @@ parse_wiki_text = "0.1.5"
 
 [workspace]
 members = ["xtask"]
+exclude = ["fuzz"]
 resolver = "2"

@@ -2,7 +2,7 @@
 
 **Fast, honest wikitext extraction and parsing — in Rust.**
 
-> **Status: 🚧 Early / design phase.** Documentation-first; code lands in stages (see [Roadmap](#roadmap)). Not yet released to crates.io.
+> **Status: 🚧 Stage 1 works.** The fast extractor — wikitext → clean text, CLI, ~22× WikiExtractor — is implemented and tested; the structured AST engine is Stage 2. Not yet on crates.io.
 
 ---
 
@@ -16,6 +16,22 @@ The de-facto tool for that, [WikiExtractor](https://github.com/attardi/wikiextra
 
 - **Floor — a faster WikiExtractor.** wikitext → clean plain text, **measured ~22× faster** than WikiExtractor on an 8 MB dump (it's Rust; see [Benchmarks](#benchmarks--test-status)). Drop-in for the "I just need the text" use case.
 - **Ceiling — a modern wikitext engine.** A structured AST that preserves tables, link anchor text, and document structure — and that **emits a diagnostic when it hits input it can't faithfully handle, instead of silently corrupting the output.**
+
+## Usage
+
+Stage 1 (the extractor) works today. From source:
+
+```bash
+cargo build --release
+
+# wikitext dump  ->  clean plain text (or JSON Lines)
+./target/release/wikrs --input enwiki-latest-pages-articles-multistream.xml.bz2 --format jsonl > out.jsonl
+
+# report the conversion rate instead of writing pages
+./target/release/wikrs --input dump.xml.bz2 --stats
+```
+
+`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted.
 
 ## Why is this hard? (and why that's the moat)
 
@@ -32,6 +48,19 @@ That honesty — telling you *exactly* what it couldn't parse — is the core di
 - ❌ Byte-level MediaWiki / Parsoid compatibility
 - ❌ Full template / Lua (Scribunto) expansion
 - ❌ Editing or emitting wikitext — wikrs is read-direction only: wikitext → text / AST / HTML
+
+## Known differences vs WikiExtractor
+
+wikrs's Stage 1 extractor is deliberately lossy, like WikiExtractor — but the exact choices differ. Current behavior:
+
+- Templates (`{{…}}`) and tables (`{|…|}`) are dropped (nesting-aware).
+- Internal links keep their visible text: `[[A|text]]`→`text`, `[[A]]`→`A`.
+- `[[File:…]]` / `[[Image:…]]` are dropped, caption included.
+- External links keep their label: `[url text]`→`text`; a bare `[url]` is dropped.
+- `<ref>…</ref>`, HTML comments, and `<nowiki>` are removed (nowiki keeps its inner text).
+- Headings, list markers, and bold/italic are reduced to their text.
+
+Anything beyond this is honestly out of scope for Stage 1 — structure-preserving extraction (tables, link graph) is Stage 2. Behavior is tracked in [docs/stages/stage-1-extractor.md](docs/stages/stage-1-extractor.md).
 
 ## Roadmap
 
@@ -62,6 +91,7 @@ _Last updated: 2026-06-24_
 
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
+- **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
 ## Documentation
 

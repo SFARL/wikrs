@@ -1,0 +1,25 @@
+[package]
+name = "wikrs-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.wikrs]
+path = ".."
+
+# Own workspace: keeps the nightly/libfuzzer dependency out of the main build
+# and out of CI. Run with: cargo +nightly fuzz run strip
+[workspace]
+
+[[bin]]
+name = "strip"
+path = "fuzz_targets/strip.rs"
+test = false
+doc = false
+bench = false

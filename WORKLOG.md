@@ -156,3 +156,17 @@
 - **意义:** **保底档核心论点"又快一个量级"实测成立（实为 20×+）。** README 头条从"roughly an order of magnitude"改成实测 ~22×。
 - **诚实标注:** 合成 dump = 同一篇文章重复，真实异构 dump 比例会变；WikiExtractor 的启动/模板预处理有固定开销，大 dump 上会摊薄——但量级成立。
 - **下一步:** Task 9（fuzz + README usage + 首发 0.1.0）。Stage 1 接近收尾。
+
+---
+
+## [2026-06-24] Stage 1 Task 9：robustness/fuzz + README + 0.1.0 收尾
+
+- **Change:**
+  - `tests/robustness.rs`：11 种畸形输入不 panic + 2 MB 线性（~150 ms）。**CI 常跑，不需 nightly。**
+  - cargo-fuzz 脚手架 `fuzz/`（独立 workspace + root `exclude=["fuzz"]`，不进 CI；`cargo +nightly fuzz run strip` 按需深 fuzz）。
+  - README：Usage、Known differences vs WikiExtractor、Robustness、status 更新；新增 `CHANGELOG.md`（0.1.0）。
+  - 版本 `0.0.0 → 0.1.0`（Stage 1 feature-complete）；`publish=false` **暂留**（发布是公开动作，待用户拍板）。
+- **Tests:** robustness 2 个全绿；全量 19 测试通过，clippy `-D warnings` 干净；确认 fuzz 不进 root workspace（members = xtask, wikrs）。
+- **Benchmark:** strip 不变 ~118 MiB/s；2 MB 畸形输入 ~150 ms（线性，非平方）。
+- **Regression?** none。
+- **⚠️ 待用户决定:** 发 `0.1.0` 到 crates.io 会让**源码公开**——与当前 **private** 仓库冲突。两条路：① 转 public 再发布；② 先留私有，晚点发。我不会擅自 publish。
