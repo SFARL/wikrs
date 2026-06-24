@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 keywords = ["wikitext", "wikipedia", "mediawiki", "parser", "nlp"]
 categories = ["text-processing", "parser-implementations"]
 publish = false
+exclude = [".github/", ".claude/", ".cargo/", "tools/", "scripts/", "WORKLOG.md"]
 
 [lib]
 name = "wikrs"
