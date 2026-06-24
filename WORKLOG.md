@@ -96,3 +96,14 @@
 - **Benchmark:** 无 perf 改动；最新基线 `parse_wiki_text` 258 MiB/s。
 - **Regression?** none。
 - **本条 commit 即首例**：subject 走新规则。
+
+---
+
+## [2026-06-24] Stage 1 Task 1：dump 流式读取
+
+- **Change:** 实现 `dump::Page` + `dump::Pages`（quick-xml 0.40 流式迭代 `<page>`，跳 redirect、记 ns、解 XML 实体）；`Page::is_article()` = ns0 且非 redirect。TDD：先写失败单测 → 实现 → 绿。
+- **Tests:** 新增 2 个单测（字段解析、ns/redirect 过滤）；`cargo test --all-features` 全绿；clippy `-D warnings` 干净。
+- **Benchmark:** dump **不在 benched 路径**（`benches/compare.rs` 目前只测 parse_wiki_text，wikrs `strip` 未实现）。当前基线读数 ~304 MiB/s，相对上次 ±1.5% 属噪声。→ **wikrs 自己的吞吐数从 Task 6（strip 串通）才开始进 commit subject / README。**
+- **Regression?** none。
+- **备注:** quick-xml 0.40 去掉了 `BytesText::unescape()`，改用 `decode()` + `quick_xml::escape::unescape()`。
+- **下一步:** Task 2（`dump::open` 支持 `.xml.bz2` multistream）。
