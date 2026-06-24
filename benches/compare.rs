@@ -21,10 +21,10 @@ fn bench_baselines(c: &mut Criterion) {
         })
     });
 
-    // TODO(after plan Task 6): add wikrs's extractor to the same group:
-    // group.bench_function("wikrs_strip", |b| {
-    //     b.iter(|| std::hint::black_box(wikrs::extract::strip(black_box(SAMPLE))))
-    // });
+    // wikrs's own Stage 1 extractor, on the same input, in the same group.
+    group.bench_function("wikrs_strip", |b| {
+        b.iter(|| std::hint::black_box(wikrs::extract::strip(std::hint::black_box(SAMPLE))))
+    });
 
     group.finish();
 }

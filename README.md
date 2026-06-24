@@ -50,12 +50,14 @@ The headline metric we're building toward: **"X% structurally identical to Parso
 _Last updated: 2026-06-24_
 
 - **Tests:** green — `cargo test --all-features`
-- **Sample-article parse throughput** (criterion, `benches/compare.rs`):
+- **Sample-article throughput** (criterion, `benches/compare.rs`):
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `parse_wiki_text` (Rust baseline) | ~258 MiB/s | community parser, 2018, unmaintained |
-  | `wikrs::extract::strip` | _pending_ | lands in Stage 1 |
+  | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (unoptimized baseline) |
+  | `parse_wiki_text` (reference) | ~319 MiB/s | community Rust parser → AST, 2018 |
+
+  > Apples-to-oranges on purpose: `strip` produces fully-cleaned **owned text** (five allocating passes), while `parse_wiki_text` builds a borrowed AST and emits nothing — so it's expected to be faster here. The number that matters for Stage 1's pitch is **wikrs vs WikiExtractor (Python)**, wired in Task 8. `strip` is an honest unoptimized baseline; making it single-pass is tracked perf work.
 
   Run it yourself: `scripts/bench.sh`.
 

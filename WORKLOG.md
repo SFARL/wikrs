@@ -116,3 +116,20 @@
 - **Tests:** 新增 `tests/dump_open.rs`（写 `.xml` 和 `.xml.bz2` 各跑一遍，断言解出同一页）；`cargo test --all-features` 全绿。
 - **Benchmark:** 仍不在 benched 路径（dump 不进 bench）；沿用 ~304 MiB/s 基线读数，无变化。
 - **Regression?** none。
+
+---
+
+## [2026-06-24] Stage 1 Task 3–6：extract::strip 管道串通 ⭐ 里程碑
+
+- **Change:** 实现 `extract::strip` 四个 pass + 编排：
+  - `comments`：去 `<!-- -->` / `<ref>…</ref>` / `<nowiki>`（大小写不敏感，leak-free）
+  - `templates`：去 `{{…}}` / `{|…|}`（嵌套感知，UTF-8 安全）
+  - `links`：`[[A|t]]`→t、`[[File:…]]`→空、`[url t]`→t、裸 url→空
+  - `markup`：标题 / 列表符 / 粗斜体 / 残留标签
+  - `strip()`：comments→templates→links→markup→collapse 空行
+  并把 `wikrs::extract::strip` 接进 `benches/compare.rs`。
+- **Tests:** 每个 pass 都有单测（comments×2、templates、links、markup）+ `strip()` 端到端单测 + `tests/strip_snapshots.rs`（insta，已人工核对输出正确）。`cargo test --all-features` 全绿，clippy `-D warnings` 干净。
+- **Benchmark:** **首次有 wikrs 自己的数** → `wikrs_strip` ~118 MiB/s vs `parse_wiki_text` ~319 MiB/s。
+- **Regression?** none（新代码，无既有基线可退）。**诚实标注：wikrs 当前比 parse_wiki_text 慢**——工作量不同（strip 产出完整 owned 文本、5 趟分配；parse_wiki_text 建借用 AST、不产文本）。**Stage 1 真正要赢的是 vs WikiExtractor（Python，Task 8）**，不是 parse_wiki_text。strip 是诚实未优化基线，单趟化是后续 perf 活，workflow 会跟踪。
+- **里程碑:** wikrs 第一次能把 wikitext → 干净纯文本；README 记分牌从 pending 变真实数字。
+- **下一步:** Task 7（CLI + rayon 端到端 text/jsonl）→ Task 8（vs WikiExtractor 基准，立"快一个量级"）。

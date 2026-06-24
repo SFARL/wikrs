@@ -30,6 +30,7 @@ bzip2 = "0.6.1"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
+insta = "1.48.0"
 parse_wiki_text = "0.1.5"
 # added per-task by the Stage 1 plan (e.g. insta)
 
