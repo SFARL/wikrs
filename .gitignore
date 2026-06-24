@@ -9,6 +9,12 @@
 *.bz2
 *.xml.bz2
 
+# parserTests.txt is GPL — fetched at test time (cargo xtask fetch-parser-tests), never committed
+/tests/fixtures/parserTests.txt
+
+# WikiExtractor Python venv (comparison baseline)
+.venv/
+
 # macOS
 .DS_Store
 

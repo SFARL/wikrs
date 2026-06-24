@@ -18,9 +18,19 @@ path = "src/lib.rs"
 name = "wikrs"
 path = "src/main.rs"
 
+[[bench]]
+name = "compare"
+harness = false
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 
 [dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+parse_wiki_text = "0.1.5"
 # added per-task by the Stage 1 plan (e.g. insta)
+
+[workspace]
+members = ["xtask"]
+resolver = "2"

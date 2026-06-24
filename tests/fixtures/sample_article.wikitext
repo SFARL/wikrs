@@ -1,0 +1,46 @@
+{{Infobox planet
+| name = Examplia
+| discovery_date = 1846
+| mass = 5.97e24 kg
+| moons = 2
+}}
+'''Examplia''' is a fictional [[terrestrial planet]] used here as a ''representative''
+wikitext sample for benchmarking.<ref name="primary">Authored for the wikrs test suite.</ref>
+It is the [[Star system|third world]] from its star and is not to be confused with
+[[Examplia (disambiguation)|the moon of the same name]].<!-- editor note: keep this neutral -->
+
+== History ==
+The name first appeared in <nowiki>[[brackets]]</nowiki> in early drafts. For more
+detail see the [https://example.org/examplia external overview] or the
+[https://example.org bare link].
+
+=== Formation ===
+Examplia formed from the [[protoplanetary disk]] approximately 4.5&nbsp;billion years
+ago. Key stages included:
+
+* Accretion of [[planetesimal]]s
+* Differentiation into a metallic [[planetary core|core]] and silicate mantle
+* Late heavy bombardment, recorded in its [[File:Examplia-craters.jpg|thumb|right|Heavily cratered southern highlands]] cratered terrain
+
+== Physical characteristics ==
+{| class="wikitable"
+|-
+! Property !! Value
+|-
+| Equatorial radius || 6,051 km
+|-
+| Surface gravity || 8.87 m/s²
+|}
+
+Examplia has '''two''' moons, '''''Alpha''''' and ''Beta'', both captured
+[[asteroid]]s.{{citation needed|date=June 2026}}
+
+== See also ==
+* [[List of fictional planets]]
+* [[Planetary science]]
+
+== References ==
+{{reflist}}
+
+[[Category:Fictional planets]]
+[[Category:wikrs test fixtures]]

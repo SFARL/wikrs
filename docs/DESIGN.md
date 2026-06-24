@@ -80,7 +80,7 @@
 
 ## 5. 模块 / Crate 结构
 
-**起步：单 crate `wikrs`（lib + bin），不开 workspace。** 等 Stage 2 的 AST 稳定、且 `wikrs-dump` 想被独立复用时再拆 workspace。
+**起步：单 crate `wikrs`（lib + bin）。** 为 dev 工具（`xtask`：拉 parserTests、跑对比基准）已开一个**最小 workspace**（root + `xtask`），但库本身仍是单 crate。等 Stage 2 的 AST 稳定、且 `wikrs-dump` 想被独立复用时再把库拆成多 crate。
 
 ```
 wikrs/
