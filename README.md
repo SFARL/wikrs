@@ -37,7 +37,7 @@ That honesty — telling you *exactly* what it couldn't parse — is the core di
 
 | Stage | What | Status |
 |------:|------|--------|
-| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | 🔜 next |
+| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | 🛠 in progress |
 | **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 📋 planned |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
@@ -60,6 +60,7 @@ _Last updated: 2026-06-24_
   > Apples-to-oranges on purpose: `strip` produces fully-cleaned **owned text** (five allocating passes), while `parse_wiki_text` builds a borrowed AST and emits nothing — so it's expected to be faster here. The number that matters for Stage 1's pitch is **wikrs vs WikiExtractor (Python)**, wired in Task 8. `strip` is an honest unoptimized baseline; making it single-pass is tracked perf work.
 
   Run it yourself: `scripts/bench.sh`.
+- **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
 
 ## Documentation
 

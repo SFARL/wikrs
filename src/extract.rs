@@ -41,6 +41,15 @@ fn collapse_blank_lines(s: &str) -> String {
     out.trim().to_string()
 }
 
+/// Whether stripped output still contains unconverted wikitext markup — the
+/// basis of the Stage 1 *conversion rate* (the fraction of pages that come out
+/// clean). Honest by design: leftover `{{ }}`, `[[ ]]`, or `{| |}` means a
+/// construct we did not handle survived into the supposed "plain text".
+pub fn looks_clean(text: &str) -> bool {
+    const RESIDUALS: [&str; 6] = ["{{", "}}", "[[", "]]", "{|", "|}"];
+    !RESIDUALS.iter().any(|m| text.contains(m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,5 +58,12 @@ mod tests {
     fn strips_a_small_article() {
         let wt = "'''Hi''' [[World|there]].<ref>x</ref> {{t|a}} end";
         assert_eq!(strip(wt), "Hi there.  end");
+    }
+
+    #[test]
+    fn looks_clean_flags_residual_markup() {
+        assert!(looks_clean("Earth is the third planet."));
+        assert!(!looks_clean("Has {{cite}} left over"));
+        assert!(!looks_clean("link [[Earth]] survived"));
     }
 }

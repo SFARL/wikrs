@@ -811,6 +811,9 @@ dependencies = [
  "insta",
  "parse_wiki_text",
  "quick-xml",
+ "rayon",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

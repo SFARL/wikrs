@@ -27,6 +27,9 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 quick-xml = "0.40.1"
 bzip2 = "0.6.1"
+rayon = "1.12.0"
+serde_json = "1.0.150"
+serde = { version = "1.0.228", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }

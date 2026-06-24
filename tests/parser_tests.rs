@@ -149,6 +149,32 @@ fn loads_real_fixture_and_counts_cases() {
     );
 }
 
+/// Stage 1 conversion rate: run `extract::strip` over every real parserTests
+/// wikitext snippet and report the fraction that comes out clean (no residual
+/// markup). This is the honest "how much can we actually convert" number — it
+/// will climb as the extractor handles more constructs.
+#[test]
+fn stage1_conversion_rate() {
+    if !Path::new(FIXTURE).exists() {
+        eprintln!("SKIP: {FIXTURE} missing — run `cargo xtask fetch-parser-tests`.");
+        return;
+    }
+    let text = std::fs::read_to_string(FIXTURE).unwrap();
+    let tests = parse_tests(&text);
+    let total = tests.len();
+    let clean = tests
+        .iter()
+        .filter(|t| wikrs::extract::looks_clean(&wikrs::extract::strip(&t.wikitext)))
+        .count();
+    let pct = 100.0 * clean as f64 / total as f64;
+    eprintln!("Stage 1 clean conversion over parserTests: {clean}/{total} ({pct:.1}%)");
+    assert!(total > 500);
+    assert!(
+        pct > 90.0,
+        "clean conversion regressed below floor: {pct:.1}%"
+    );
+}
+
 /// Per-case conformance against wikrs. Enabled once the engine can produce
 /// comparable (normalized HTML) output — Stage 2. Until then it would report
 /// ~0% and only add noise, so it is ignored by default.

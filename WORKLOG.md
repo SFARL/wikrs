@@ -133,3 +133,14 @@
 - **Regression?** none（新代码，无既有基线可退）。**诚实标注：wikrs 当前比 parse_wiki_text 慢**——工作量不同（strip 产出完整 owned 文本、5 趟分配；parse_wiki_text 建借用 AST、不产文本）。**Stage 1 真正要赢的是 vs WikiExtractor（Python，Task 8）**，不是 parse_wiki_text。strip 是诚实未优化基线，单趟化是后续 perf 活，workflow 会跟踪。
 - **里程碑:** wikrs 第一次能把 wikitext → 干净纯文本；README 记分牌从 pending 变真实数字。
 - **下一步:** Task 7（CLI + rayon 端到端 text/jsonl）→ Task 8（vs WikiExtractor 基准，立"快一个量级"）。
+
+---
+
+## [2026-06-24] Stage 1 Task 7：CLI + 输出 + 转化率指标
+
+- **Change:** `wikrs` CLI（clap）：`--input`、`--format text|jsonl`、`--stats`；`rayon` 并行 strip；`output::to_jsonl`。新增 `extract::looks_clean`（残留 `{{`/`[[`/`{|` 检测）作为"转化率"指标，`--stats` 打印 `pages / clean / %`。
+- **Tests:** `output` 单测、`looks_clean` 单测、`tests/cli.rs`（text 输出 + 转化率统计，2 个集成测试）、`tests/parser_tests.rs::stage1_conversion_rate`（跑 1077 真实 case，floor>90%）。`cargo test --all-features` 全绿，clippy 干净。
+- **转化率（新指标，回答"test 要不要含转化率"）:** parserTests 1077 例 → **98.1% 干净转化**（输出无残留括号标记）。**诚实标注**：这是"标记有没有漏出来"的宽松下限，**不是正确性**；真正确性比对在 Stage 2（vs Parsoid）。21 个漏标记 case = strip 边界，后续硬化。
+- **Benchmark:** strip 未改，~118 MiB/s 不变（CLI/looks_clean 不在 benched 路径）。
+- **Regression?** none。
+- **下一步:** Task 8（vs WikiExtractor 端到端基准，立"快一个量级"）。
