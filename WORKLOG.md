@@ -72,3 +72,17 @@
 - **验证**：fmt + clippy(`-D warnings`, all-targets, workspace) + test 全绿；GPL fixture 和 .venv 确认未入库；对比基准实测出数。
 - **产出**：commit `3951c1a`，已 push。
 - **下一步**：执行 Stage 1 计划实现 `extract::strip`（实现后对比基准/parserTests 才有 wikrs 这一侧的数）/ 放 LICENSE。
+
+---
+
+## [2026-06-24] bench 脚本 + wikrs-dev-workflow 项目 skill
+
+> 本条用新 skill 定义的格式记录（Change / Tests / Benchmark / Regression），作为示范。
+
+- **Change:** 新增 `scripts/bench.sh`（跑 `cargo bench --bench compare` + 抽 time/thrpt/change 摘要）；新增项目级 skill `.claude/skills/wikrs-dev-workflow/SKILL.md`，把"每改动 → 先写失败单测 → 跑 bench → tests 绿且 bench 无静默回退 → 记 WORKLOG + 刷 README"固化成流程；README 加 "Benchmarks & test status" 公开记分牌。
+- **Tests:** 无 Rust 改动；`cargo test --all-features` 仍绿（沿用上次）。
+- **Benchmark:** 无 perf 相关改动。基线现值 `parse_wiki_text` ~314 MiB/s（机器较空，相对上次 258 偏高，属噪声，非代码变化）。
+- **Regression?** none。
+- **关键决策:** bench gate 取"无_无法解释_的回退"而非"必须每次更快"——纠正/新增 case 允许带来**可记录的合理回退**，避免逼着造假或跳过难题；skill 放仓库内 `.claude/skills/`，随项目分发、团队共用。
+- **产出:** commit（见下），已 push。
+- **下一步:** 用这个 workflow 跑 Stage 1 第一个 Task（先写失败单测）。

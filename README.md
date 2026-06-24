@@ -43,6 +43,22 @@ That honesty — telling you *exactly* what it couldn't parse — is the core di
 
 The headline metric we're building toward: **"X% structurally identical to Parsoid on N random Wikipedia pages"**, plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
 
+## Benchmarks & test status
+
+> Kept current on every change via the project's `wikrs-dev-workflow` skill. Methodology: [docs/TESTING.md](docs/TESTING.md).
+
+_Last updated: 2026-06-24_
+
+- **Tests:** green — `cargo test --all-features`
+- **Sample-article parse throughput** (criterion, `benches/compare.rs`):
+
+  | Implementation | Throughput | Notes |
+  |---|---|---|
+  | `parse_wiki_text` (Rust baseline) | ~258 MiB/s | community parser, 2018, unmaintained |
+  | `wikrs::extract::strip` | _pending_ | lands in Stage 1 |
+
+  Run it yourself: `scripts/bench.sh`.
+
 ## Documentation
 
 | Doc | Contents |
