@@ -19,7 +19,7 @@ For each unit of work:
 4. **Run the benchmark:** `scripts/bench.sh` (wraps `cargo bench --bench compare`).
 5. **Check the done-gate** (below).
 6. **Record it:** append a `WORKLOG.md` entry and refresh the README results table.
-7. **Commit** code + tests + WORKLOG + README together, so the evidence travels with the change.
+7. **Commit** code + tests + WORKLOG + README together (commit-message rules below), so the evidence travels with the change.
 
 ## The done-gate
 
@@ -55,6 +55,21 @@ One entry per meaningful change. Keep it skimmable:
 ### README.md — the "Benchmarks & test status" section
 
 Keep it current: the date, the test status, and the latest throughput number(s). This table is the project's **public scoreboard** — the honest, checkable evidence the whole pitch rests on. A stale number there is worse than no number, because it quietly lies. When Stage 2 lands the conformance harness, this section grows to include the three numbers from [docs/TESTING.md](../../../docs/TESTING.md) (`X% identical / Y% structural diff / Z% reported`).
+
+### Git commit message
+
+Two hard rules, so that `git log --oneline` reads as a running performance history — you can scroll the log and *see* the throughput move commit by commit:
+
+- **Subject line ≤ 20 characters.** Terse. Drop long `type(scope):` prefixes if they don't fit — brevity wins here.
+- **The subject carries the benchmark number** — the new throughput or the Δ for this change (e.g. `272MB/s` or `+9%`). For a change with no perf impact (docs, a pure bugfix), carry the latest measured number so the trail never breaks.
+
+Everything else goes in the **body**, which is unconstrained: the full `Change / Tests / Benchmark / Regression` lines (same as the WORKLOG entry) and the `Co-Authored-By` trailer. The 20-char limit applies to the **subject only**.
+
+**Example subjects:**
+- `dump iter 314MB/s`
+- `strip tpl +9%`
+- `links 272MB/s`
+- `fix nowiki 258MB/s`  ← bugfix, perf unchanged → latest number
 
 ## Comparison context
 

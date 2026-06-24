@@ -86,3 +86,13 @@
 - **关键决策:** bench gate 取"无_无法解释_的回退"而非"必须每次更快"——纠正/新增 case 允许带来**可记录的合理回退**，避免逼着造假或跳过难题；skill 放仓库内 `.claude/skills/`，随项目分发、团队共用。
 - **产出:** commit（见下），已 push。
 - **下一步:** 用这个 workflow 跑 Stage 1 第一个 Task（先写失败单测）。
+
+---
+
+## [2026-06-24] skill 补提交信息规则
+
+- **Change:** `wikrs-dev-workflow` skill 加"git 提交信息"规则——subject ≤20 字符、且必带 benchmark 数值（新吞吐或 Δ）；详情 + `Co-Authored-By` 入 body。目的：`git log --oneline` 直接当性能历史看。
+- **Tests:** 无 Rust 改动，不影响 CI。
+- **Benchmark:** 无 perf 改动；最新基线 `parse_wiki_text` 258 MiB/s。
+- **Regression?** none。
+- **本条 commit 即首例**：subject 走新规则。
