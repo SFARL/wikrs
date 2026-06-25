@@ -92,7 +92,7 @@ _Last updated: 2026-06-24_
 
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
-- **Stage 2 parser coverage** (parserTests, 1077 cases): **30.4%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat lists, refs/nowiki/comments). Honest *coverage*, not correctness; it climbs as the supported subset grows. Track: `cargo test --test parser_tests stage2_coverage_rate`.
+- **Stage 2 parser coverage** (parserTests, 1077 cases): **36.0%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat lists, refs/nowiki/comments, inline HTML formatting tags). Honest *coverage*, not correctness; it climbs as the supported subset grows (templates are the big remaining blocker). Track: `cargo test --test parser_tests stage2_coverage_rate`.
 - **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
 ## Documentation

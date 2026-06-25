@@ -189,12 +189,22 @@ fn stage2_coverage_rate() {
     let text = std::fs::read_to_string(FIXTURE).unwrap();
     let tests = parse_tests(&text);
     let total = tests.len();
-    let supported = tests
-        .iter()
-        .filter(|t| wikrs::parser::parse(&t.wikitext).diagnostics.is_empty())
-        .count();
+    let mut supported = 0;
+    let mut hist: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for t in &tests {
+        let diags = wikrs::parser::parse(&t.wikitext).diagnostics;
+        if diags.is_empty() {
+            supported += 1;
+        }
+        for d in &diags {
+            *hist.entry(d.code).or_default() += 1;
+        }
+    }
     let pct = 100.0 * supported as f64 / total as f64;
+    let mut blocking: Vec<_> = hist.into_iter().collect();
+    blocking.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
     eprintln!("Stage 2 coverage (zero diagnostics): {supported}/{total} ({pct:.1}%)");
+    eprintln!("blocking diagnostics: {blocking:?}");
     assert!(total > 500);
     assert!(pct > 20.0, "Stage 2 coverage regressed: {pct:.1}%");
 }

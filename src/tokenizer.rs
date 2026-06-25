@@ -36,6 +36,11 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
                         }
                         i = end;
                     }
+                    TagSpan::SkipTag(end) => i = end,
+                    TagSpan::Space(end) => {
+                        out.push(Inline::Text(" "));
+                        i = end;
+                    }
                 }
                 start = i;
                 continue;
@@ -84,23 +89,65 @@ enum TagSpan<'a> {
     Drop(usize),
     /// Keep this inner text, then skip to the offset (`<nowiki>…</nowiki>`).
     Keep(&'a str, usize),
+    /// Skip just this tag (a transparent formatting tag); inner content flows on.
+    SkipTag(usize),
+    /// Skip this tag and emit a space (a void element like `<br>`).
+    Space(usize),
 }
 
-/// At a `<` (offset `i`): if it opens a comment / `<ref>` / `<nowiki>`, say how
-/// to handle it (comments and refs dropped; nowiki's inner kept literally).
+/// How the engine treats an HTML tag, by lowercased name.
+pub(crate) enum TagKind {
+    Ref,
+    Nowiki,
+    /// Inline formatting (`<b>`, `<span>`, …): drop the tag, keep the inner text.
+    Transparent,
+    /// Void element (`<br>`, `<hr>`): a word/line break in plain text.
+    Void,
+    /// Structural/unknown (`<div>`, `<table>`, …): out of range → diagnostic.
+    Unsupported,
+}
+
+/// Classify an HTML tag name (lowercased).
+pub(crate) fn tag_kind(name_lower: &str) -> TagKind {
+    match name_lower {
+        "ref" => TagKind::Ref,
+        "nowiki" => TagKind::Nowiki,
+        "br" | "hr" | "wbr" => TagKind::Void,
+        "b" | "i" | "em" | "strong" | "span" | "code" | "tt" | "small" | "big" | "sub" | "sup"
+        | "u" | "s" | "strike" | "del" | "ins" | "abbr" | "cite" | "q" | "var" | "kbd" | "samp"
+        | "mark" | "dfn" | "bdi" | "bdo" | "time" | "data" | "font" => TagKind::Transparent,
+        _ => TagKind::Unsupported,
+    }
+}
+
+/// At a `<` (offset `i`): classify the tag and say how to handle it. Comment/ref
+/// dropped, nowiki inner kept, formatting tags skipped, `<br>`→space; structural
+/// or unknown tags return `None` so the block-level check reports them.
 fn tag_span(s: &str, i: usize) -> Option<TagSpan<'_>> {
     let rest = &s[i..];
     if rest.starts_with("<!--") {
         let end = rest.find("-->").map_or(s.len(), |j| i + j + 3);
         return Some(TagSpan::Drop(end));
     }
-    if let Some(end) = ref_end(rest) {
-        return Some(TagSpan::Drop(i + end));
+    let b = rest.as_bytes();
+    let mut j = 1;
+    if b.get(j) == Some(&b'/') {
+        j += 1;
     }
-    if let Some((inner, end)) = nowiki_span(rest) {
-        return Some(TagSpan::Keep(inner, i + end));
+    let name_start = j;
+    while j < b.len() && b[j].is_ascii_alphabetic() {
+        j += 1;
     }
-    None
+    if j == name_start {
+        return None;
+    }
+    match tag_kind(&rest[name_start..j].to_ascii_lowercase()) {
+        TagKind::Ref => ref_end(rest).map(|e| TagSpan::Drop(i + e)),
+        TagKind::Nowiki => nowiki_span(rest).map(|(inner, e)| TagSpan::Keep(inner, i + e)),
+        TagKind::Transparent => rest[j..].find('>').map(|k| TagSpan::SkipTag(i + j + k + 1)),
+        TagKind::Void => rest[j..].find('>').map(|k| TagSpan::Space(i + j + k + 1)),
+        TagKind::Unsupported => None,
+    }
 }
 
 /// `rest` starts with `<`. If it opens a `<ref …>`/`<ref … />`, return the
@@ -190,5 +237,9 @@ mod tests {
             inline("a<nowiki>[[x]]</nowiki>b"),
             vec![Text("a"), Text("[[x]]"), Text("b")]
         );
+        // transparent formatting tags drop (inner flows); <br> → space
+        assert_eq!(inline("<b>x</b>"), vec![Text("x")]);
+        assert_eq!(inline("a<br>b"), vec![Text("a"), Text(" "), Text("b")]);
+        assert_eq!(inline("<span>'''y'''</span>"), vec![Bold, Text("y"), Bold]);
     }
 }

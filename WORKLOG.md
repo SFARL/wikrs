@@ -290,3 +290,16 @@
 - **Regression?** none。
 - **里程碑:** Stage 2 AST 路线端到端在 CLI 跑通，且**比 strip 快**——borrow-friendly 设计兑现。
 - **下一步:** 表格 / 更多子集；strip 优化已被 AST 超越（可考虑让 AST 早点接管默认）。
+
+---
+
+## [2026-06-25] Stage 2：HTML 标签分类（透明 / void / 结构）
+
+- **数据驱动:** coverage 测试加诊断码直方图 → 拦路是 U-TEMPLATE(462) 和 U-HTML(334)。模板是 deferred 硬骨头；HTML 是可做的最高杠杆。
+- **Change:** tokenizer 加 `tag_kind` 分类（Ref/Nowiki/Transparent/Void/Unsupported）。透明格式标签（`<b>`/`<i>`/`<span>`/`<code>`/`<sub>`… 约 30 种）**丢标签留内文**（内文继续 tokenize，markup 不丢）；void（`<br>`/`<hr>`）→ 空格；结构标签（`<div>`/`<table>`…）仍 U-HTML。parser `has_tag` 改用同一分类（保持一致）。
+- **Coverage:** **30.4% → 36.0%（327→388，+61 例）**。U-HTML 334→248。
+- **Tests:** tokenizer 3 例 + parser `keeps_inner_of_transparent_html_tags`；19 lib 测试绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变（AST 路线 ~276）。
+- **Regression?** none。
+- **现状:** 剩余拦路 **U-TEMPLATE(462) 一家独大**（deferred）；其余 U-HTML(248，多为结构标签)/U-TABLE(60)/U-LIST(47)/U-PRE(22)。
+- **下一步:** 表格 / 嵌套·定义列表 / pre；模板是终极硬骨头。

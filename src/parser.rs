@@ -287,8 +287,9 @@ fn unsupported_reason(block: &str) -> Option<(&'static str, String)> {
     None
 }
 
-/// Whether the block contains an HTML tag we don't handle. `<ref>`, `<nowiki>`,
-/// and `<!-- … -->` are handled inline by the tokenizer, so they don't count.
+/// Whether the block contains an HTML tag the tokenizer can't handle inline.
+/// Comments, `<ref>`, `<nowiki>`, and transparent/void formatting tags are
+/// handled there; only structural/unknown tags (`<div>`, `<table>`, …) count.
 fn has_tag(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = 0;
@@ -306,11 +307,13 @@ fn has_tag(s: &str) -> bool {
             while j < b.len() && b[j].is_ascii_alphabetic() {
                 j += 1;
             }
-            if j > name_start {
-                let name = s[name_start..j].to_ascii_lowercase();
-                if name != "ref" && name != "nowiki" {
-                    return true;
-                }
+            if j > name_start
+                && matches!(
+                    tokenizer::tag_kind(&s[name_start..j].to_ascii_lowercase()),
+                    tokenizer::TagKind::Unsupported
+                )
+            {
+                return true;
             }
         }
         i += 1;
@@ -374,6 +377,13 @@ mod tests {
         // a tag we don't handle is still honestly Unsupported
         let t = parse("a <div>html</div> b");
         assert!(t.diagnostics.iter().any(|d| d.code == "U-HTML"));
+    }
+
+    #[test]
+    fn keeps_inner_of_transparent_html_tags() {
+        let p = parse("Use <code>x</code> and <b>'''bold'''</b> and a<br>break.");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "Use x and bold and a break.");
     }
 
     #[test]
