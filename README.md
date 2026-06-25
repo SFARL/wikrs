@@ -31,7 +31,7 @@ cargo build --release
 ./target/release/wikrs --input dump.xml.bz2 --stats
 ```
 
-`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted.
+`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted. `--engine ast` switches from the default fast `strip` to the Stage 2 parser (structured + honest diagnostics).
 
 ## Why is this hard? (and why that's the moat)
 
@@ -84,10 +84,11 @@ _Last updated: 2026-06-24_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (unoptimized baseline) |
-  | `parse_wiki_text` (reference) | ~319 MiB/s | community Rust parser → AST, 2018 |
+  | `wikrs` AST path (parse→plain) | ~276 MiB/s | Stage 2 engine — **faster than strip** (borrow-friendly `Cow`) |
+  | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
+  | `parse_wiki_text` (reference) | ~308 MiB/s | community Rust parser → AST (no text out), 2018 |
 
-  > Apples-to-oranges on purpose: `strip` produces fully-cleaned **owned text** (five allocating passes), while `parse_wiki_text` builds a borrowed AST and emits nothing — so it's expected to be faster here. The number that matters for Stage 1's pitch is **wikrs vs WikiExtractor (Python)**, wired in Task 8. `strip` is an honest unoptimized baseline; making it single-pass is tracked perf work.
+  > The Stage 2 **AST path** (parse → plain text) is ~2.3× faster than the Stage 1 `strip` *and* competitive with `parse_wiki_text` — while producing both text **and** diagnostics, where `parse_wiki_text` only builds a borrowed AST. The borrow-friendly `Cow` AST is why. `strip` stays the CLI default for now (it keeps prose from template-heavy blocks the AST engine still flags `Unsupported`); the AST engine takes over as coverage climbs.
 
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.

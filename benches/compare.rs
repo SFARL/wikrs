@@ -26,6 +26,14 @@ fn bench_baselines(c: &mut Criterion) {
         b.iter(|| std::hint::black_box(wikrs::extract::strip(std::hint::black_box(SAMPLE))))
     });
 
+    // wikrs's Stage 2 AST path: parse + render to plain text.
+    group.bench_function("wikrs_ast", |b| {
+        b.iter(|| {
+            let parsed = wikrs::parser::parse(std::hint::black_box(SAMPLE));
+            std::hint::black_box(wikrs::render::plain(&parsed.nodes))
+        })
+    });
+
     group.finish();
 }
 

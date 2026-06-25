@@ -278,3 +278,15 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步:** 步骤 3（`render::plain` 接进 CLI/bench 与 strip 对比）或表格。
+
+---
+
+## [2026-06-25] Stage 2 步骤 3：render::plain 接进 CLI + bench ⭐
+
+- **Change:** CLI 加 `--engine strip|ast`（默认 strip）；`ast` 走 `parser::parse → render::plain`。bench 加 `wikrs_ast`（parse+render）。`tests/cli.rs::ast_engine_extracts_text`。
+- **Benchmark（意外好结果）:** 样例上 **`wikrs_ast` ~276 MiB/s vs `wikrs_strip` ~118 MiB/s → AST 路线快 ~2.3×！** 原因：strip 是 5 趟分配；AST 路线 tokenizer/parser/render 借用友好（`Cow`），分配少。AST 还逼近 `parse_wiki_text`（~308），但**同时产出文本 + 诊断**（parse_wiki_text 只建借用 AST、不产文本）。
+- **诚实标注:** strip 仍是 CLI 默认——AST 在模板重的真实块上还把整块判 Unsupported 丢掉（输出更稀），strip 把模板剥掉留周围散文。等 coverage 上去，AST 接管默认。
+- **Tests:** cli ast 测试；全绿，clippy 干净。
+- **Regression?** none。
+- **里程碑:** Stage 2 AST 路线端到端在 CLI 跑通，且**比 strip 快**——borrow-friendly 设计兑现。
+- **下一步:** 表格 / 更多子集；strip 优化已被 AST 超越（可考虑让 AST 早点接管默认）。

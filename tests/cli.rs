@@ -29,6 +29,20 @@ fn extracts_clean_text() {
 }
 
 #[test]
+fn ast_engine_extracts_text() {
+    let xml = "<mediawiki><page><title>Earth</title><ns>0</ns>\
+        <revision><text>'''Earth''' is a [[Planet|planet]].</text></revision></page></mediawiki>";
+    let out = run(&["--engine", "ast"], xml, "ast.xml");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8(out.stdout).unwrap();
+    assert!(s.contains("Earth is a planet."), "got: {s}");
+}
+
+#[test]
 fn reports_conversion_rate() {
     let xml = "<mediawiki>\
         <page><title>A</title><ns>0</ns><revision><text>clean text here</text></revision></page>\

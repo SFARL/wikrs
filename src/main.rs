@@ -6,12 +6,20 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 
-use wikrs::{dump, extract, output};
+use wikrs::{dump, extract, output, parser, render};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Format {
     Text,
     Jsonl,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Engine {
+    /// Stage 1: fast, lossy text stripper.
+    Strip,
+    /// Stage 2: tokenizer → parser → AST → plain text (honest; flags out-of-range).
+    Ast,
 }
 
 /// Fast, honest wikitext extraction.
@@ -25,6 +33,10 @@ struct Cli {
     /// Output format.
     #[arg(long, value_enum, default_value_t = Format::Text)]
     format: Format,
+
+    /// Extraction engine: `strip` (Stage 1, fast/lossy) or `ast` (Stage 2 parser).
+    #[arg(long, value_enum, default_value_t = Engine::Strip)]
+    engine: Engine,
 
     /// Print a conversion-rate summary to stderr instead of writing pages.
     #[arg(long)]
@@ -42,7 +54,13 @@ fn main() -> anyhow::Result<()> {
 
     let rendered: Vec<(String, String)> = pages
         .par_iter()
-        .map(|p| (p.title.clone(), extract::strip(&p.text)))
+        .map(|p| {
+            let text = match cli.engine {
+                Engine::Strip => extract::strip(&p.text),
+                Engine::Ast => render::plain(&parser::parse(&p.text).nodes),
+            };
+            (p.title.clone(), text)
+        })
         .collect();
 
     if cli.stats {
