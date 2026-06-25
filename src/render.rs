@@ -39,6 +39,18 @@ fn render_into(nodes: &[Node], out: &mut String) {
                 }
                 out.push('\n');
             }
+            Node::Table { rows } => {
+                for row in rows {
+                    for (i, cell) in row.iter().enumerate() {
+                        if i > 0 {
+                            out.push('\t');
+                        }
+                        render_into(cell, out);
+                    }
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
             // A block we couldn't give structure: fall back to a best-effort
             // text strip (Stage 1) so its prose isn't lost. The diagnostic still
             // records that we couldn't structure it.

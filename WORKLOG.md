@@ -349,3 +349,15 @@
 - **Tests:** `extracts_clean_text` 改测 `--engine strip`；cli + 全量绿，clippy 干净，快照不变（表格 strip → 空）。
 - **Regression?** none（默认有意切换；strip 仍可 `--engine strip`）。
 - **下一步:** 表格（把 cell 文本抠出来）/ 收口发布 / 嵌套列表。
+
+---
+
+## [2026-06-25] Stage 2：表格（简单表 → cell 文本）
+
+- **Change:** AST 加 `Table{rows}`；render 逐行 cell（tab 分隔，行换行）；parser `parse_table`（`{|…|}` / `|-` 行 / `|`·`!` cell，`||`·`!!` 分隔）+ `cell_content`（按 MediaWiki 规则取"属性管道"——`[[`/`{{` 外第一个 `|`——后的内容）。**多行 cell / 非表格行 → None → Unsupported → strip 兜底**（不假装解析）。
+- **Coverage:** **36.7% → 39.6%（395→427，+32）**。U-TABLE 100→54（简单表解了，复杂表仍诚实 Unsupported）。
+- **输出:** 表格 cell 文本现在抠出来了（快照：表格 → `Property\tValue`，整篇文章只剩 `W-TEMPLATE` 一条诊断）。
+- **Tests:** `parses_simple_tables`（属性丢弃、链接 pipe 不误判、多行 cell 仍 Unsupported）；22 lib 绿，clippy 干净，快照更新。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **现状（直方图）:** W-TEMPLATE(368，丢+警告) / U-HTML(301，结构标签) / U-TABLE(54，复杂表) / U-LIST(47，嵌套) / U-PRE(13)。

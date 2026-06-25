@@ -67,7 +67,7 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 | Stage | What | Status |
 |------:|------|--------|
 | **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (0.1.0, unreleased) |
-| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~37% coverage; **now the CLI default**) |
+| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~40% coverage; **now the CLI default**) |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
 The headline metric we're building toward: **"X% structurally identical to Parsoid on N random Wikipedia pages"**, plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
@@ -92,7 +92,7 @@ _Last updated: 2026-06-24_
 
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
-- **Stage 2 parser coverage** (parserTests, 1077 cases): **36.7%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat & definition lists, preformatted blocks, refs/nowiki/comments, inline HTML formatting tags). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported — which is why this number went slightly *down* when template handling got more honest, not up). Track: `cargo test --test parser_tests stage2_coverage_rate`.
+- **Stage 2 parser coverage** (parserTests, 1077 cases): **39.6%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat & definition lists, preformatted blocks, simple tables, refs/nowiki/comments, inline HTML formatting tags). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported — which is why this number went slightly *down* when template handling got more honest, not up). Track: `cargo test --test parser_tests stage2_coverage_rate`.
 - **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
 ## Documentation

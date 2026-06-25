@@ -40,6 +40,10 @@ pub enum Node<'a> {
     },
     /// A leading-space preformatted block; each entry is one line's inline content.
     Preformatted(Vec<Vec<Node<'a>>>),
+    /// A table: rows of cells of inline content. Cell attributes and structure
+    /// beyond rows×cells aren't preserved; complex (e.g. multi-line-cell) tables
+    /// stay Unsupported instead.
+    Table { rows: Vec<Vec<Vec<Node<'a>>>> },
     /// A construct outside our declared support range, kept verbatim and
     /// reported via a diagnostic rather than guessed at.
     Unsupported(Cow<'a, str>),

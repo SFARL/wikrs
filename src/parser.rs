@@ -33,6 +33,8 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
             list
         } else if let Some(pre) = parse_pre(block) {
             pre
+        } else if let Some(table) = parse_table(block) {
+            table
         } else if let Some((code, msg)) = unsupported_reason(&strip_inline_templates(block)) {
             diagnostics.push(Diagnostic::unsupported(code, span.clone(), msg));
             Node::Unsupported(Cow::Borrowed(block))
@@ -151,6 +153,76 @@ fn parse_pre(block: &str) -> Option<Node<'_>> {
         .map(|l| parse_inline(&tokenizer::inline(&l[1..])))
         .collect();
     Some(Node::Preformatted(lines))
+}
+
+/// A `{| … |}` block → a table (rows × cells of inline content). Cell attributes
+/// are dropped; a table with a multi-line cell (a line that isn't table markup)
+/// returns `None` and stays Unsupported, so we never fake structure we didn't
+/// actually parse.
+fn parse_table(block: &str) -> Option<Node<'_>> {
+    if !block.trim_start().starts_with("{|") {
+        return None;
+    }
+    let mut rows: Vec<Vec<Vec<Node>>> = Vec::new();
+    let mut current: Vec<Vec<Node>> = Vec::new();
+    let mut started = false;
+    for line in block.lines() {
+        let l = line.trim_start();
+        if l.starts_with("{|") || l.starts_with("|}") || l.starts_with("|+") {
+            continue; // open / close / caption
+        } else if l.starts_with("|-") {
+            if started {
+                rows.push(std::mem::take(&mut current));
+            }
+            started = true;
+        } else if let Some(rest) = l.strip_prefix('!') {
+            for cell in rest.split("!!") {
+                current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+            }
+            started = true;
+        } else if let Some(rest) = l.strip_prefix('|') {
+            for cell in rest.split("||") {
+                current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+            }
+            started = true;
+        } else {
+            return None; // not table markup (multi-line cell, …) → Unsupported
+        }
+    }
+    if !current.is_empty() {
+        rows.push(current);
+    }
+    Some(Node::Table { rows })
+}
+
+/// A table cell's content: the part after the attribute pipe — the first `|` not
+/// inside `[[…]]` or `{{…}}` — or the whole cell if there is none. This is
+/// MediaWiki's own rule for separating cell attributes from cell content.
+fn cell_content(cell: &str) -> &str {
+    let b = cell.as_bytes();
+    let (mut link, mut tmpl) = (0i32, 0i32);
+    let mut i = 0;
+    while i < b.len() {
+        let two = i + 1 < b.len();
+        if two && b[i] == b'[' && b[i + 1] == b'[' {
+            link += 1;
+            i += 2;
+        } else if two && b[i] == b']' && b[i + 1] == b']' {
+            link -= 1;
+            i += 2;
+        } else if two && b[i] == b'{' && b[i + 1] == b'{' {
+            tmpl += 1;
+            i += 2;
+        } else if two && b[i] == b'}' && b[i + 1] == b'}' {
+            tmpl -= 1;
+            i += 2;
+        } else if b[i] == b'|' && link == 0 && tmpl == 0 {
+            return cell[i + 1..].trim();
+        } else {
+            i += 1;
+        }
+    }
+    cell.trim()
 }
 
 /// Assemble inline tokens into nodes, pairing bold/italic/link delimiters.
@@ -460,6 +532,22 @@ mod tests {
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert!(matches!(p.nodes[0], Node::Preformatted(_)));
         assert_eq!(render::plain(&p.nodes), "code line one\ncode two");
+    }
+
+    #[test]
+    fn parses_simple_tables() {
+        let p = parse(
+            "{| class=\"wikitable\"\n|-\n! Name !! Age\n|-\n| Alice || 30\n|-\n| Bob || 25\n|}",
+        );
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert!(matches!(p.nodes[0], Node::Table { .. }));
+        assert_eq!(render::plain(&p.nodes), "Name\tAge\nAlice\t30\nBob\t25");
+        // a cell attribute is dropped, keeping the content
+        let a = parse("{|\n| style=\"x\" | hi || [[A|link]]\n|}");
+        assert_eq!(render::plain(&a.nodes), "hi\tlink");
+        // a multi-line cell makes the table Unsupported (strip-fallback)
+        let c = parse("{|\n| cell line one\nstill the cell\n|}");
+        assert!(c.diagnostics.iter().any(|d| d.code == "U-TABLE"));
     }
 
     #[test]
