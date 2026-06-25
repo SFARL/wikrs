@@ -82,25 +82,30 @@
 
 **起步：单 crate `wikrs`（lib + bin）。** 为 dev 工具（`xtask`：拉 parserTests、跑对比基准）已开一个**最小 workspace**（root + `xtask`），但库本身仍是单 crate。等 Stage 2 的 AST 稳定、且 `wikrs-dump` 想被独立复用时再把库拆成多 crate。
 
+实际布局（起步从简，多数是单文件 `.rs`；Stage 2 模块已建 ✓）：
+
 ```
 wikrs/
-├── Cargo.toml
+├── Cargo.toml                  # lib + bin；workspace 含 xtask（exclude fuzz）
 ├── src/
-│   ├── lib.rs            # 公共 API 入口，re-export
-│   ├── main.rs           # bin `wikrs`：CLI（clap）
-│   ├── dump/             # 流式读 XML dump（multistream .bz2），产出 PageStream
-│   ├── extract/          # Stage 1：wikitext → plain text（lossy strip）
-│   ├── tokenizer/        # Stage 2：wikitext → token 流
-│   ├── parser/           # Stage 2：token → AST
-│   ├── ast/              # AST 类型定义（Node 枚举、span）
-│   ├── render/           # plain / struct(JSONL) / html 渲染器
-│   └── diag/             # Diagnostic 类型、severity、span、错误码
-├── benches/              # criterion 基准（速度叙事）
-├── fuzz/                 # cargo-fuzz target（安全网）
-└── tests/                # 集成测试 + parserTests 跑测 + insta 快照
+│   ├── lib.rs                  # 公共 API 入口（pub mod …）
+│   ├── main.rs                 # bin `wikrs`：CLI（clap + rayon）
+│   ├── dump.rs                 # 流式读 XML dump（multistream .bz2）
+│   ├── extract.rs (+ extract/) # Stage 1：lossy strip（comments/templates/links/markup 四 pass）
+│   ├── output.rs               # text / jsonl 输出
+│   ├── tokenizer.rs            # Stage 2：inline 分词（手写，单趟线性）✓
+│   ├── parser.rs               # Stage 2：块级 + inline 组装 → AST + 诊断 ✓
+│   ├── ast.rs                  # `Node<'a>`（Cow borrow-friendly）✓
+│   ├── render.rs               # `render::plain`（struct/html 待）✓
+│   └── diag.rs                 # `Diagnostic` / `Severity` / 错误码 ✓
+├── benches/compare.rs          # criterion：parse_wiki_text vs wikrs_strip
+├── fuzz/                       # cargo-fuzz target（strip，安全网；独立 workspace）
+├── xtask/                      # dev 任务（fetch-parser-tests / bench-compare / bench-bliki / make-sample-dump）
+├── tools/                      # 对比基线（wikiextractor / bliki，产物 gitignore）
+└── tests/                      # cli / dump_open / parser_tests(coverage) / strip_snapshots / robustness
 ```
 
-**每个模块单一职责；变在一起的放一起；优先小而专的文件。** `dump` 与 wikitext 语法完全无关，必须能独立测试。
+**每个模块单一职责；变在一起的放一起；优先小而专的文件。** `dump` 与 wikitext 语法完全无关，能独立测试。手写 tokenizer（而非 `logos`）——对线性复杂度和错误恢复有完全控制。
 
 ### 依赖选型（初定，可在 WORKLOG 记录变更）
 

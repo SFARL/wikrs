@@ -242,3 +242,17 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步:** `<ref>` / nowiki 等再扩；然后步骤 3（`render::plain` 接进 CLI/bench 与 strip 对比）。
+
+---
+
+## [2026-06-25] 同步 Stage 2 文档 + 测试
+
+- **Change（文档）:**
+  - `docs/stages/stage-2-ast.md` 重写：状态"未开工"→"进行中"，加「当前进度（实测）」（支持子集 / Unsupported 清单 / coverage 27.1% / 实际模块），checkpoint+task 标注 ✓/部分/未；记一条已知限制（紧贴正文无空行的标题暂识别不到）。
+  - `docs/DESIGN.md` §5 模块树更新为实际布局（多数单文件 `.rs`，Stage 2 模块已建）。
+  - `docs/TESTING.md` parserTests 行加「Stage 2 零诊断覆盖率 27.1%」。
+- **Change（测试）:** 新增 `tests/parse_snapshots.rs`——Stage 2 AST 路线快照（`parse → render::plain` + 诊断码），干净演示支持构造渲染、范围外 → Unsupported 丢弃 + 诊断（U-TEMPLATE/U-TABLE）。
+- **Tests:** 27 测试绿，clippy `-D warnings` 干净。
+- **Benchmark:** 无 perf 改动；strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **顺手发现:** 标题块切分依赖空行 → 紧贴正文的标题漏识别（已记进 stage 文档待修；也解释了真实文章 coverage 偏低）。

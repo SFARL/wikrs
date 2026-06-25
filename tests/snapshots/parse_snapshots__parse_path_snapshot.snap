@@ -1,0 +1,15 @@
+---
+source: tests/parse_snapshots.rs
+expression: report
+---
+=== render::plain ===
+Earth is the third planet from the Sun.
+
+History
+
+Formed long ago. See the overview.
+
+accretion of planetesimals
+differentiation into a core
+
+=== diagnostics: ["U-TEMPLATE", "U-TABLE"] ===
