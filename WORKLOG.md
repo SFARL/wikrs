@@ -220,3 +220,14 @@
 - **Benchmark:** 无 perf 改动；strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步（步骤 2）:** 扩子集（外链 / 列表 / `<ref>`…），看 24.8% 往上爬。
+
+---
+
+## [2026-06-25] Stage 2 步骤 2a：外链
+
+- **Change:** tokenizer 加 `ExtOpen`/`ExtClose`（`[http://… …]`，scheme 检测）；parser `make_ext_link`（URL = 首个空格前，其余 = label；裸 url → 空 label，渲染为空，对齐 Stage 1）。复用 `Link` 节点。
+- **Coverage:** **24.8%（267/1077）不变**——外链此前未被标 Unsupported（静默当文本漏过），所以这是**正确性 + 诚实性修复**（堵上"声称支持却 mangle"的洞），不是覆盖率增量。下一类（列表）才推高数字。
+- **Tests:** tokenizer ext-link + parser `parses_external_links`；15 lib 测试绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步:** 列表（`*`/`#`/`:`/`;`）——会把覆盖率推上去。

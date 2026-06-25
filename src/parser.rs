@@ -108,6 +108,16 @@ fn parse_inline<'a>(tokens: &[Inline<'a>]) -> Vec<Node<'a>> {
                     i += 1;
                 }
             },
+            Inline::ExtOpen => match find(tokens, i + 1, Inline::ExtClose) {
+                Some(close) => {
+                    out.push(make_ext_link(&tokens[i + 1..close]));
+                    i = close + 1;
+                }
+                None => {
+                    out.push(Node::Text(Cow::Borrowed("[")));
+                    i += 1;
+                }
+            },
             Inline::Bold => match find(tokens, i + 1, Inline::Bold) {
                 Some(close) => {
                     out.push(Node::Bold(parse_inline(&tokens[i + 1..close])));
@@ -131,6 +141,10 @@ fn parse_inline<'a>(tokens: &[Inline<'a>]) -> Vec<Node<'a>> {
             // A stray closer or pipe outside a link is just literal text.
             Inline::LinkClose => {
                 out.push(Node::Text(Cow::Borrowed("]]")));
+                i += 1;
+            }
+            Inline::ExtClose => {
+                out.push(Node::Text(Cow::Borrowed("]")));
                 i += 1;
             }
             Inline::Pipe => {
@@ -169,6 +183,24 @@ fn make_link<'a>(inner: &[Inline<'a>]) -> Node<'a> {
                 label: vec![Node::Text(target.clone())],
                 target,
             }
+        }
+    }
+}
+
+/// Build a `Link` from an external link `[url label]` (URL = up to the first
+/// whitespace; the rest is the label). A bare `[url]` gets an empty label, so it
+/// renders to nothing in plain text — matching the Stage 1 extractor.
+fn make_ext_link<'a>(inner: &[Inline<'a>]) -> Node<'a> {
+    let raw = concat_text(inner);
+    if let Some((url, label)) = raw.split_once(char::is_whitespace) {
+        Node::Link {
+            target: Cow::Owned(url.to_string()),
+            label: vec![Node::Text(Cow::Owned(label.trim_start().to_string()))],
+        }
+    } else {
+        Node::Link {
+            target: Cow::Owned(raw.into_owned()),
+            label: Vec::new(),
         }
     }
 }
@@ -242,6 +274,13 @@ mod tests {
             "History\n\nEarth is the third planet."
         );
         assert!(matches!(p.nodes[0], Node::Heading { level: 2, .. }));
+    }
+
+    #[test]
+    fn parses_external_links() {
+        let p = parse("See [https://nasa.gov NASA] and [https://x.org].");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "See NASA and .");
     }
 
     #[test]
