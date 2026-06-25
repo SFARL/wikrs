@@ -7,7 +7,10 @@
 //! extractor. Stage 2 adds `tokenizer` / `parser` / `ast` / `render` / `diag`.
 
 pub mod ast;
+pub mod diag;
 pub mod dump;
 pub mod extract;
 pub mod output;
+pub mod parser;
 pub mod render;
+pub mod tokenizer;

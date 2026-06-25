@@ -181,3 +181,17 @@
 - **Benchmark:** 不在 benched 路径（strip 仍 ~118 MiB/s）。Stage 2 串通后把 `render::plain` 接进 bench 与 strip 对比。
 - **Regression?** none。
 - **下一步:** tokenizer（wikitext → token 流，最坏复杂度线性）→ parser（token → AST，范围外发 `Unsupported` + Diagnostic）。先做一个最小诚实子集（段落/粗斜体/标题/链接）。
+
+---
+
+## [2026-06-24] Stage 2：tokenizer + 最小子集 parser + diagnostics ⭐
+
+- **Change:**
+  - `src/tokenizer.rs`：inline 分词器（Text/Bold/Italic/LinkOpen/LinkClose/Pipe），单趟线性，ASCII marker、UTF-8 安全。
+  - `src/diag.rs`：`Diagnostic{severity,code,span,message}` + `Severity`（Error/Warning/Unsupported）——D2 诚实机制落地。
+  - `src/parser.rs`：`parse(wikitext) -> Parsed{nodes, diagnostics}`。块级（空行分段 + 标题）+ inline 组装（粗斜体/链接配对，未闭合**降级为文本**不吞后文）。**最小诚实子集**：段落/标题/粗斜体/内链；其余（模板/表格/ref/列表/HTML/预格式）→ `Unsupported` + Diagnostic（保留原文 span，不硬解）。
+- **Tests:** tokenizer ×1 + parser ×2（真 wikitext → AST → text 全对；unsupported 块出正确诊断码 `U-TEMPLATE`/`U-LIST`）。全量 **23 测试绿**，clippy `-D warnings` 干净。
+- **Benchmark:** parser 暂不在 benched 路径（strip 仍 ~118 MiB/s）；接 `render::plain` 端到端后再进 bench 与 strip 对比。
+- **Regression?** none。
+- **里程碑:** AST 第一次能从真实 wikitext 长出来；诊断系统就位（范围外报警而非静默）。
+- **下一步:** ① parser + `render::plain` 接进 CLI/bench 与 strip 对比；② 接 parserTests 的 `#[ignore]` conformance（让"X% 一致"出真实数）；③ 扩子集（列表/外链…），通过率随之爬。
