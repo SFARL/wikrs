@@ -102,24 +102,26 @@ fn parse_heading(block: &str) -> Option<Node<'_>> {
     })
 }
 
-/// A block whose every line starts with a single `*` or `#` → a flat list.
-/// Nested (`**`), mixed, and definition (`:`/`;`) lists return `None` and are
-/// left to `unsupported_reason` (honest: we don't parse them yet).
+/// A block whose every line starts with a single list marker (`*`/`#`/`:`/`;`)
+/// → a flat list (bulleted, numbered, or definition). Nested lists (`**`, `:*`,
+/// …) return `None` and stay Unsupported — we don't preserve nesting yet.
 fn parse_list(block: &str) -> Option<Node<'_>> {
-    let marker = block.bytes().next()?;
-    if marker != b'*' && marker != b'#' {
+    let first = block.bytes().next()?;
+    if !matches!(first, b'*' | b'#' | b':' | b';') {
         return None;
     }
     let mut items = Vec::new();
     for line in block.lines() {
         let lb = line.as_bytes();
-        if lb.first() != Some(&marker) || matches!(lb.get(1), Some(b'*' | b'#' | b':' | b';')) {
+        if !matches!(lb.first(), Some(b'*' | b'#' | b':' | b';'))
+            || matches!(lb.get(1), Some(b'*' | b'#' | b':' | b';'))
+        {
             return None;
         }
         items.push(parse_inline(&tokenizer::inline(line[1..].trim_start())));
     }
     Some(Node::List {
-        ordered: marker == b'#',
+        ordered: first == b'#',
         items,
     })
 }
@@ -363,6 +365,10 @@ mod tests {
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert!(matches!(p.nodes[0], Node::List { ordered: false, .. }));
         assert_eq!(render::plain(&p.nodes), "first\nsecond");
+        // definition lists (;/:) parse as flat lists too
+        let d = parse("; term\n: definition");
+        assert!(d.diagnostics.is_empty(), "diags: {:?}", d.diagnostics);
+        assert_eq!(render::plain(&d.nodes), "term\ndefinition");
         // nested lists stay honestly Unsupported
         let n = parse("* a\n** nested");
         assert!(n.diagnostics.iter().any(|d| d.code == "U-LIST"));

@@ -303,3 +303,14 @@
 - **Regression?** none。
 - **现状:** 剩余拦路 **U-TEMPLATE(462) 一家独大**（deferred）；其余 U-HTML(248，多为结构标签)/U-TABLE(60)/U-LIST(47)/U-PRE(22)。
 - **下一步:** 表格 / 嵌套·定义列表 / pre；模板是终极硬骨头。
+
+---
+
+## [2026-06-25] Stage 2：定义列表（`;` / `:`）
+
+- **Change:** `parse_list` 扩到接受 `*`/`#`/`:`/`;` 任意单层标记（含混合，如 `;term` + `:desc`）；嵌套（多字符标记）仍 Unsupported。
+- **Coverage:** **36.0% → 36.8%（388→396，+8）**。U-LIST 47→38。
+- **Tests:** `parses_simple_lists` 加定义列表断言；19 lib 绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步:** pre（22，易）/ 表格（60，复杂）。
