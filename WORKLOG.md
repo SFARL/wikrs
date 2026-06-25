@@ -209,3 +209,14 @@
 - **Tests:** xtask clippy `-D warnings` 干净；`cargo xtask bench-bliki` 端到端跑通；wikrs 测试不受影响。
 - **Regression?** none。
 - **环境踩坑:** 有 JDK15、无 Maven/coursier；Bliki 模板路径缺类 → `TemplateParserError:NoClassDefFoundError`，用 coursier launcher 解全依赖（11 jar）后正常渲染（1476B→3722B HTML）。
+
+---
+
+## [2026-06-25] Stage 2 步骤 1：parserTests 真实覆盖率
+
+- **Change:** `tests/parser_tests.rs::stage2_coverage_rate`——跑 1077 真实 case，报"**零诊断 = 完全支持**"百分比；floor>20% 防回退。README 记分牌加 Stage 2 coverage 行。
+- **Coverage（新指标，比 Stage 1 那个 98% 宽松下限有意义得多）:** **24.8%（267/1077）** 在当前最小子集（段落/标题/粗斜体/内链）内零 `Unsupported`、完全支持。
+- **Tests:** 新测试绿；`parser_tests` 4 passed + 1 ignored；clippy `-D warnings` 干净。
+- **Benchmark:** 无 perf 改动；strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步（步骤 2）:** 扩子集（外链 / 列表 / `<ref>`…），看 24.8% 往上爬。

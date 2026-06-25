@@ -175,6 +175,30 @@ fn stage1_conversion_rate() {
     );
 }
 
+/// Stage 2 coverage: the fraction of real parserTests cases that parse with
+/// ZERO diagnostics — i.e. entirely within wikrs's declared support range. An
+/// honest "how much can we fully handle" number (coverage, **not** correctness;
+/// correctness-vs-expected-HTML is the separate Stage 3 conformance metric). It
+/// starts low and climbs as the supported subset grows.
+#[test]
+fn stage2_coverage_rate() {
+    if !Path::new(FIXTURE).exists() {
+        eprintln!("SKIP: {FIXTURE} missing — run `cargo xtask fetch-parser-tests`.");
+        return;
+    }
+    let text = std::fs::read_to_string(FIXTURE).unwrap();
+    let tests = parse_tests(&text);
+    let total = tests.len();
+    let supported = tests
+        .iter()
+        .filter(|t| wikrs::parser::parse(&t.wikitext).diagnostics.is_empty())
+        .count();
+    let pct = 100.0 * supported as f64 / total as f64;
+    eprintln!("Stage 2 coverage (zero diagnostics): {supported}/{total} ({pct:.1}%)");
+    assert!(total > 500);
+    assert!(pct > 20.0, "Stage 2 coverage regressed: {pct:.1}%");
+}
+
 /// Per-case conformance against wikrs. Enabled once the engine can produce
 /// comparable (normalized HTML) output — Stage 2. Until then it would report
 /// ~0% and only add noise, so it is ignored by default.
