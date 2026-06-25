@@ -325,3 +325,16 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **现状（直方图）:** **U-TEMPLATE(461) 一家独大**；其余 U-HTML(247，结构标签)/U-TABLE(58)/U-LIST(37，嵌套)/U-PRE(6)。简单杠杆基本榨干，剩下是模板（deferred 死结）和复杂的表格 / 嵌套列表。
+
+---
+
+## [2026-06-25] Stage 2：选项 A —— 内联模板"丢弃 + Warning"（不展开）⭐
+
+- **战略前提（讨论后定）:** C（真展开）要重写 preprocessor + parser functions + Lua/Scribunto + 全套模板语料，且会把速度砸到 Bliki 那档（~0.4 MB/s，慢 2 个量级），正中交接文档警告的"淹死"陷阱。**选 A**：丢模板、留散文、发诚实 Warning。
+- **Change:** tokenizer 加内联 `{{…}}` 丢弃（brace-match 嵌套）；diag 加 `Diagnostic::warning`（`Severity::Warning`）；parser：`{{` 不再判 Unsupported，非 Unsupported 块含 `{{` → 发 `W-TEMPLATE`；`strip_inline_templates` 让块分类不被模板内部的 `{|`/标签骗到（修 over-flag）。
+- **输出（A 的核心价值）:** 含模板的真实块**现在提取出散文**而非整块丢。快照实证：`The planet {{convert}} has '''two''' moons.{{citation needed}}` → `The planet  has two moons.` + `W-TEMPLATE`。
+- **Coverage:** 37.4% → **36.7%** —— 是**更诚实**：此前含模板的标题/列表块被当"零诊断完全支持"（却输出字面 `{{x}}`），现在诚实带 Warning → 不再虚高。
+- **Benchmark:** `wikrs_ast` 276 → **180 MiB/s** —— 现在真在模板重的块上干活（提取散文）而非跳过；仍比 strip（119）快 ~1.5×，输出好得多。
+- **Tests:** tokenizer 2 例 + `drops_inline_templates_with_warning` + 改 `flags_unsupported` + 更新快照；21 lib 绿，clippy 干净。
+- **Regression?** none（行为有意改变，全测试覆盖）。
+- **意义:** AST 引擎在真实文章上输出像样了，诊断模型多了 Warning 档（丢了什么一清二楚）；距"AST 接管 CLI 默认"更近。

@@ -34,4 +34,15 @@ impl Diagnostic {
             message: message.into(),
         }
     }
+
+    /// A recoverable loss: content was dropped but processing continued (e.g. a
+    /// template we don't expand) — honest about *what* was lost.
+    pub fn warning(code: &'static str, span: Range<usize>, message: impl Into<String>) -> Self {
+        Diagnostic {
+            severity: Severity::Warning,
+            code,
+            span,
+            message: message.into(),
+        }
+    }
 }

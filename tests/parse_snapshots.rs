@@ -18,7 +18,7 @@ Formed long ago. See [https://example.org/overview the overview].
 * accretion of [[planetesimal]]s
 * differentiation into a [[planetary core|core]]
 
-{{Infobox planet|moons=2}}
+The planet {{convert|6051|km}} has '''two''' moons.{{citation needed}}
 
 {| class=\"wikitable\"
 ! Property !! Value

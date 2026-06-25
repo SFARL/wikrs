@@ -84,15 +84,15 @@ _Last updated: 2026-06-24_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain) | ~276 MiB/s | Stage 2 engine — **faster than strip** (borrow-friendly `Cow`) |
+  | `wikrs` AST path (parse→plain) | ~180 MiB/s | Stage 2 engine — **faster than strip**, extracts prose around dropped templates |
   | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~308 MiB/s | community Rust parser → AST (no text out), 2018 |
 
-  > The Stage 2 **AST path** (parse → plain text) is ~2.3× faster than the Stage 1 `strip` *and* competitive with `parse_wiki_text` — while producing both text **and** diagnostics, where `parse_wiki_text` only builds a borrowed AST. The borrow-friendly `Cow` AST is why. `strip` stays the CLI default for now (it keeps prose from template-heavy blocks the AST engine still flags `Unsupported`); the AST engine takes over as coverage climbs.
+  > The Stage 2 **AST path** (parse → plain text) is ~1.5× faster than the Stage 1 `strip` while producing both text **and** diagnostics. It **does not expand templates** — it drops them with a `W-TEMPLATE` warning and keeps the surrounding prose. Expanding templates (à la Bliki) would mean a Lua/Scribunto engine and ~2 orders of magnitude slower (Bliki runs at ~0.4 MB/s) — surrendering the one advantage wikrs has. So: honest drop + flag, keep the speed.
 
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
-- **Stage 2 parser coverage** (parserTests, 1077 cases): **37.4%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat & definition lists, preformatted blocks, refs/nowiki/comments, inline HTML formatting tags). Honest *coverage*, not correctness; it climbs as the supported subset grows (templates are the big remaining blocker). Track: `cargo test --test parser_tests stage2_coverage_rate`.
+- **Stage 2 parser coverage** (parserTests, 1077 cases): **36.7%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat & definition lists, preformatted blocks, refs/nowiki/comments, inline HTML formatting tags). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported — which is why this number went slightly *down* when template handling got more honest, not up). Track: `cargo test --test parser_tests stage2_coverage_rate`.
 - **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
 ## Documentation

@@ -1,10 +1,12 @@
 //! Parser: wikitext → AST + diagnostics, over a deliberately small but honest
-//! subset (paragraphs, headings, bold/italic, internal links). Everything else
-//! — templates, tables, refs, lists, HTML — becomes a [`Node::Unsupported`]
-//! paired with a diagnostic. We never pretend to have parsed what we didn't.
+//! subset (paragraphs, headings, bold/italic, links, flat/definition lists,
+//! refs/nowiki/comments, inline HTML formatting, preformatted). Inline templates
+//! are dropped with a `W-TEMPLATE` warning (we don't expand them — that would
+//! sacrifice the speed that is the whole point); tables and structural HTML
+//! become [`Node::Unsupported`]. We never pretend to have parsed what we didn't.
 //!
-//! The supported subset grows over time; the parserTests conformance rate (see
-//! `docs/TESTING.md`) is the score that climbs as it does.
+//! The supported subset grows over time; the parserTests coverage (see
+//! `docs/TESTING.md`) is the score that tracks it.
 
 use std::borrow::Cow;
 
@@ -24,22 +26,28 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
     let mut nodes = Vec::new();
     let mut diagnostics = Vec::new();
     for (start, block) in blocks(wikitext) {
-        if let Some(heading) = parse_heading(block) {
-            nodes.push(heading);
+        let span = start..start + block.len();
+        let node = if let Some(heading) = parse_heading(block) {
+            heading
         } else if let Some(list) = parse_list(block) {
-            nodes.push(list);
+            list
         } else if let Some(pre) = parse_pre(block) {
-            nodes.push(pre);
-        } else if let Some((code, msg)) = unsupported_reason(block) {
-            diagnostics.push(Diagnostic::unsupported(
-                code,
-                start..start + block.len(),
-                msg,
-            ));
-            nodes.push(Node::Unsupported(Cow::Borrowed(block)));
+            pre
+        } else if let Some((code, msg)) = unsupported_reason(&strip_inline_templates(block)) {
+            diagnostics.push(Diagnostic::unsupported(code, span.clone(), msg));
+            Node::Unsupported(Cow::Borrowed(block))
         } else {
-            nodes.push(Node::Paragraph(parse_inline(&tokenizer::inline(block))));
+            Node::Paragraph(parse_inline(&tokenizer::inline(block)))
+        };
+        // We extracted the prose but dropped a template we don't expand — say so.
+        if !matches!(node, Node::Unsupported(_)) && block.contains("{{") {
+            diagnostics.push(Diagnostic::warning(
+                "W-TEMPLATE",
+                span,
+                "template content dropped (not expanded)",
+            ));
         }
+        nodes.push(node);
     }
     Parsed { nodes, diagnostics }
 }
@@ -135,7 +143,7 @@ fn parse_pre(block: &str) -> Option<Node<'_>> {
     if !block.lines().all(|l| l.starts_with(' ')) {
         return None;
     }
-    if block.contains("{{") || block.contains("{|") || has_tag(block) {
+    if block.contains("{|") || has_tag(block) {
         return None;
     }
     let lines = block
@@ -280,13 +288,48 @@ fn concat_text<'a>(tokens: &[Inline<'a>]) -> Cow<'a, str> {
     }
 }
 
+/// Remove inline `{{…}}` template spans (nesting-aware) so block classification
+/// isn't fooled by markup *inside* a template (which we drop anyway). Borrows
+/// when there's nothing to strip.
+fn strip_inline_templates(s: &str) -> Cow<'_, str> {
+    if !s.contains("{{") {
+        return Cow::Borrowed(s);
+    }
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    let mut seg = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'{' && b[i + 1] == b'{' {
+            out.push_str(&s[seg..i]);
+            let mut depth = 0usize;
+            while i + 1 < b.len() {
+                if b[i] == b'{' && b[i + 1] == b'{' {
+                    depth += 1;
+                    i += 2;
+                } else if b[i] == b'}' && b[i + 1] == b'}' {
+                    depth -= 1;
+                    i += 2;
+                    if depth == 0 {
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            seg = i;
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&s[seg..]);
+    Cow::Owned(out)
+}
+
 /// If a block contains an unhandled construct, return its diagnostic code and
 /// message. Conservative on purpose: a block we can't fully handle is flagged,
 /// not mangled.
 fn unsupported_reason(block: &str) -> Option<(&'static str, String)> {
-    if block.contains("{{") {
-        return Some(("U-TEMPLATE", "templates are not parsed yet".into()));
-    }
     if block.contains("{|") {
         return Some(("U-TABLE", "tables are not parsed yet".into()));
     }
@@ -420,16 +463,31 @@ mod tests {
     }
 
     #[test]
+    fn drops_inline_templates_with_warning() {
+        let p = parse("Real prose with a {{convert|6051|km}} inside.");
+        // prose extracted, template dropped from the output
+        assert_eq!(render::plain(&p.nodes), "Real prose with a  inside.");
+        // but we honestly flag that content was dropped (a Warning, not Unsupported)
+        let w = p
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "W-TEMPLATE")
+            .unwrap();
+        assert_eq!(w.severity, crate::diag::Severity::Warning);
+    }
+
+    #[test]
     fn flags_unsupported_blocks_with_diagnostics() {
         let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n* a\n** nested";
         let p = parse(wt);
         let codes: Vec<_> = p.diagnostics.iter().map(|d| d.code).collect();
-        assert!(codes.contains(&"U-TEMPLATE"), "codes: {codes:?}");
-        assert!(codes.contains(&"U-LIST"), "codes: {codes:?}");
+        assert!(codes.contains(&"W-TEMPLATE"), "codes: {codes:?}"); // template dropped (warning)
+        assert!(codes.contains(&"U-LIST"), "codes: {codes:?}"); // nested list unsupported
         assert!(matches!(p.nodes[0], Node::Paragraph(_)));
+        // the nested-list block stays Unsupported, kept verbatim
         assert!(p
             .nodes
             .iter()
-            .any(|n| matches!(n, Node::Unsupported(s) if s.contains("Infobox"))));
+            .any(|n| matches!(n, Node::Unsupported(s) if s.contains("nested"))));
     }
 }

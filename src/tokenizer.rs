@@ -46,6 +46,17 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
                 continue;
             }
         }
+        // drop an inline template {{…}} (nesting-aware), keeping surrounding prose
+        if b[i] == b'{' && b.get(i + 1) == Some(&b'{') {
+            if let Some(end) = template_end(s, i) {
+                if start < i {
+                    out.push(Inline::Text(&s[start..i]));
+                }
+                i = end;
+                start = i;
+                continue;
+            }
+        }
         let marker = if b[i] == b'\'' {
             match b[i..].iter().take_while(|&&c| c == b'\'').count() {
                 n if n >= 3 => Some((Inline::Bold, 3)),
@@ -203,6 +214,29 @@ fn find_ci(haystack: &str, needle_lower: &str) -> Option<usize> {
     })
 }
 
+/// Brace-match an inline template from `{{` at offset `i`; return the offset
+/// just past the matching `}}` (nesting-aware), or `None` if unterminated.
+fn template_end(s: &str, i: usize) -> Option<usize> {
+    let b = s.as_bytes();
+    let mut depth = 0usize;
+    let mut j = i;
+    while j + 1 < b.len() {
+        if b[j] == b'{' && b[j + 1] == b'{' {
+            depth += 1;
+            j += 2;
+        } else if b[j] == b'}' && b[j + 1] == b'}' {
+            depth -= 1;
+            j += 2;
+            if depth == 0 {
+                return Some(j);
+            }
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
 /// Whether `s` begins with a URL scheme that starts an external link.
 fn is_ext_scheme(s: &str) -> bool {
     const SCHEMES: [&str; 5] = ["http://", "https://", "ftp://", "mailto:", "//"];
@@ -241,5 +275,8 @@ mod tests {
         assert_eq!(inline("<b>x</b>"), vec![Text("x")]);
         assert_eq!(inline("a<br>b"), vec![Text("a"), Text(" "), Text("b")]);
         assert_eq!(inline("<span>'''y'''</span>"), vec![Bold, Text("y"), Bold]);
+        // inline templates are dropped (nesting-aware), prose around them kept
+        assert_eq!(inline("a{{t|x}}b"), vec![Text("a"), Text("b")]);
+        assert_eq!(inline("a{{o{{i}}}}b"), vec![Text("a"), Text("b")]);
     }
 }
