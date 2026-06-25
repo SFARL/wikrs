@@ -314,3 +314,14 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步:** pre（22，易）/ 表格（60，复杂）。
+
+---
+
+## [2026-06-25] Stage 2：preformatted（前导空格块）
+
+- **Change:** AST 加 `Preformatted(逐行 inline)`；render 逐行输出；parser `parse_pre`——全行前导空格 → 去一格缩进、逐行 inline-parse；含模板/表格/未支持标签的 pre 仍走诊断路径（保持诚实）。
+- **Coverage:** **36.8% → 37.4%（396→403，+7）**。U-PRE 22→6（剩 6 个是含模板的 pre，正确仍 flagged）。
+- **Tests:** `parses_preformatted_blocks`；20 lib 绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **现状（直方图）:** **U-TEMPLATE(461) 一家独大**；其余 U-HTML(247，结构标签)/U-TABLE(58)/U-LIST(37，嵌套)/U-PRE(6)。简单杠杆基本榨干，剩下是模板（deferred 死结）和复杂的表格 / 嵌套列表。

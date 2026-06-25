@@ -28,6 +28,8 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
             nodes.push(heading);
         } else if let Some(list) = parse_list(block) {
             nodes.push(list);
+        } else if let Some(pre) = parse_pre(block) {
+            nodes.push(pre);
         } else if let Some((code, msg)) = unsupported_reason(block) {
             diagnostics.push(Diagnostic::unsupported(
                 code,
@@ -124,6 +126,23 @@ fn parse_list(block: &str) -> Option<Node<'_>> {
         ordered: first == b'#',
         items,
     })
+}
+
+/// A block whose every line is leading-space indented → a preformatted block
+/// (de-indented one space per line; inline wiki markup inside still parses). A
+/// template/table/tag inside falls through to the diagnostic path instead.
+fn parse_pre(block: &str) -> Option<Node<'_>> {
+    if !block.lines().all(|l| l.starts_with(' ')) {
+        return None;
+    }
+    if block.contains("{{") || block.contains("{|") || has_tag(block) {
+        return None;
+    }
+    let lines = block
+        .lines()
+        .map(|l| parse_inline(&tokenizer::inline(&l[1..])))
+        .collect();
+    Some(Node::Preformatted(lines))
 }
 
 /// Assemble inline tokens into nodes, pairing bold/italic/link delimiters.
@@ -390,6 +409,14 @@ mod tests {
         let p = parse("Use <code>x</code> and <b>'''bold'''</b> and a<br>break.");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert_eq!(render::plain(&p.nodes), "Use x and bold and a break.");
+    }
+
+    #[test]
+    fn parses_preformatted_blocks() {
+        let p = parse(" code line one\n code [[link|two]]");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert!(matches!(p.nodes[0], Node::Preformatted(_)));
+        assert_eq!(render::plain(&p.nodes), "code line one\ncode two");
     }
 
     #[test]

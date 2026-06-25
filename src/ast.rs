@@ -38,6 +38,8 @@ pub enum Node<'a> {
         ordered: bool,
         items: Vec<Vec<Node<'a>>>,
     },
+    /// A leading-space preformatted block; each entry is one line's inline content.
+    Preformatted(Vec<Vec<Node<'a>>>),
     /// A construct outside our declared support range, kept verbatim and
     /// reported via a diagnostic rather than guessed at.
     Unsupported(Cow<'a, str>),

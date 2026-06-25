@@ -32,6 +32,13 @@ fn render_into(nodes: &[Node], out: &mut String) {
                 }
                 out.push('\n');
             }
+            Node::Preformatted(lines) => {
+                for line in lines {
+                    render_into(line, out);
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
             // Dropped from plain text; surfaced separately via diagnostics.
             Node::Unsupported(_) => {}
         }
