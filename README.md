@@ -66,8 +66,8 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 
 | Stage | What | Status |
 |------:|------|--------|
-| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | 🛠 in progress |
-| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 📋 planned |
+| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (0.1.0, unreleased) |
+| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~27% coverage) |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
 The headline metric we're building toward: **"X% structurally identical to Parsoid on N random Wikipedia pages"**, plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
