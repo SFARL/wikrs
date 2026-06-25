@@ -338,3 +338,14 @@
 - **Tests:** tokenizer 2 例 + `drops_inline_templates_with_warning` + 改 `flags_unsupported` + 更新快照；21 lib 绿，clippy 干净。
 - **Regression?** none（行为有意改变，全测试覆盖）。
 - **意义:** AST 引擎在真实文章上输出像样了，诊断模型多了 Warning 档（丢了什么一清二楚）；距"AST 接管 CLI 默认"更近。
+
+---
+
+## [2026-06-25] Stage 2：AST 接管 CLI 默认（strip 退居 `--engine strip`）⭐
+
+- **Change:** `--engine` 默认 strip → **ast**。`render::plain` 的 `Unsupported` 块**回退到 strip**（best-effort 文本，散文不丢），诊断仍记录"没法结构化"。
+- **意义:** **更好的引擎成了默认**——结构化能解的、strip 兜底没法解的、全程诚实诊断。AST 输出 ≥ strip 且更快。Stage 2 的 `render::plain` 正式开始取代 Stage 1 `strip`（交接文档的目标）。
+- **Benchmark:** `wikrs_ast` ~174 MiB/s（含 Unsupported 块 strip 兜底的额外开销），仍比 strip（118）快 ~1.5×。
+- **Tests:** `extracts_clean_text` 改测 `--engine strip`；cli + 全量绿，clippy 干净，快照不变（表格 strip → 空）。
+- **Regression?** none（默认有意切换；strip 仍可 `--engine strip`）。
+- **下一步:** 表格（把 cell 文本抠出来）/ 收口发布 / 嵌套列表。

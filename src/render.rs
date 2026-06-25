@@ -39,8 +39,16 @@ fn render_into(nodes: &[Node], out: &mut String) {
                 }
                 out.push('\n');
             }
-            // Dropped from plain text; surfaced separately via diagnostics.
-            Node::Unsupported(_) => {}
+            // A block we couldn't give structure: fall back to a best-effort
+            // text strip (Stage 1) so its prose isn't lost. The diagnostic still
+            // records that we couldn't structure it.
+            Node::Unsupported(s) => {
+                let text = crate::extract::strip(s);
+                if !text.is_empty() {
+                    out.push_str(&text);
+                    out.push_str("\n\n");
+                }
+            }
         }
     }
 }

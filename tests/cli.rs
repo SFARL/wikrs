@@ -18,7 +18,7 @@ fn run(extra: &[&str], dump_xml: &str, name: &str) -> std::process::Output {
 fn extracts_clean_text() {
     let xml = "<mediawiki><page><title>Earth</title><ns>0</ns>\
         <revision><text>'''Earth''' is a [[Planet|planet]].</text></revision></page></mediawiki>";
-    let out = run(&["--format", "text"], xml, "a.xml");
+    let out = run(&["--engine", "strip", "--format", "text"], xml, "a.xml");
     assert!(
         out.status.success(),
         "stderr: {}",

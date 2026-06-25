@@ -31,7 +31,7 @@ cargo build --release
 ./target/release/wikrs --input dump.xml.bz2 --stats
 ```
 
-`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted. `--engine ast` switches from the default fast `strip` to the Stage 2 parser (structured + honest diagnostics).
+`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted. The default **`ast`** engine (Stage 2 parser: structured, honest diagnostics, faster than the old stripper) handles real articles; pass `--engine strip` for the Stage 1 fast/lossy path.
 
 ## Why is this hard? (and why that's the moat)
 
@@ -67,7 +67,7 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 | Stage | What | Status |
 |------:|------|--------|
 | **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (0.1.0, unreleased) |
-| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~27% coverage) |
+| **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~37% coverage; **now the CLI default**) |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
 The headline metric we're building toward: **"X% structurally identical to Parsoid on N random Wikipedia pages"**, plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
@@ -84,7 +84,7 @@ _Last updated: 2026-06-24_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain) | ~180 MiB/s | Stage 2 engine — **faster than strip**, extracts prose around dropped templates |
+  | `wikrs` AST path (parse→plain, **default**) | ~174 MiB/s | Stage 2 engine — **faster than strip**; structured where it can, strip-fallback for Unsupported blocks |
   | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~308 MiB/s | community Rust parser → AST (no text out), 2018 |
 

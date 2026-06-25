@@ -34,8 +34,9 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = Format::Text)]
     format: Format,
 
-    /// Extraction engine: `strip` (Stage 1, fast/lossy) or `ast` (Stage 2 parser).
-    #[arg(long, value_enum, default_value_t = Engine::Strip)]
+    /// Extraction engine: `ast` (Stage 2, structured + honest diagnostics) or
+    /// `strip` (Stage 1, fast/lossy, no diagnostics).
+    #[arg(long, value_enum, default_value_t = Engine::Ast)]
     engine: Engine,
 
     /// Print a conversion-rate summary to stderr instead of writing pages.
