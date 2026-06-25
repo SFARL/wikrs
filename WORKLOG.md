@@ -267,3 +267,14 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步:** `<ref>` / nowiki / 注释（会真正推高真实内容 coverage——含 ref 的整块现在被整块判 Unsupported）。
+
+---
+
+## [2026-06-25] Stage 2：`<ref>` / nowiki / 注释（inline 跨度）
+
+- **Change:** tokenizer 加 `<` 跨度处理（`tag_span`）：`<ref>…</ref>`/`<ref/>` 与 `<!--…-->` **丢弃**，`<nowiki>…</nowiki>` **留内文**（字面，不再当 markup 解析）——全 borrow-friendly（内文是输入切片，无额外分配）。parser `has_tag` 收窄：ref/nowiki/comment 不再判 U-HTML（交给 tokenizer），其余 HTML 标签（`<div>` 等）仍 U-HTML。
+- **Coverage:** **27.1% → 30.4%（292→327，+35 例）**。含 ref/nowiki/注释的块从整块 Unsupported → 完全支持。
+- **Tests:** tokenizer 3 例（ref/comment 丢、nowiki 留）+ parser `handles_refs_nowiki_comments`（含 `<div>` 仍 U-HTML）；18 lib 测试绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步:** 步骤 3（`render::plain` 接进 CLI/bench 与 strip 对比）或表格。

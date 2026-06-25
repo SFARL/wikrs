@@ -287,13 +287,35 @@ fn unsupported_reason(block: &str) -> Option<(&'static str, String)> {
     None
 }
 
-/// A `<` that opens a tag (`<tag`, `</tag`, `<!--`), not a literal `<` in prose.
+/// Whether the block contains an HTML tag we don't handle. `<ref>`, `<nowiki>`,
+/// and `<!-- … -->` are handled inline by the tokenizer, so they don't count.
 fn has_tag(s: &str) -> bool {
     let b = s.as_bytes();
-    (0..b.len()).any(|i| {
-        b[i] == b'<'
-            && matches!(b.get(i + 1), Some(c) if c.is_ascii_alphabetic() || *c == b'!' || *c == b'/')
-    })
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'<' {
+            if s[i..].starts_with("<!--") {
+                i += 4;
+                continue;
+            }
+            let mut j = i + 1;
+            if b.get(j) == Some(&b'/') {
+                j += 1;
+            }
+            let name_start = j;
+            while j < b.len() && b[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            if j > name_start {
+                let name = s[name_start..j].to_ascii_lowercase();
+                if name != "ref" && name != "nowiki" {
+                    return true;
+                }
+            }
+        }
+        i += 1;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -341,6 +363,17 @@ mod tests {
         // nested lists stay honestly Unsupported
         let n = parse("* a\n** nested");
         assert!(n.diagnostics.iter().any(|d| d.code == "U-LIST"));
+    }
+
+    #[test]
+    fn handles_refs_nowiki_comments() {
+        let p =
+            parse("Text<ref name=x>cite</ref> and <!-- hidden --> a <nowiki>[[literal]]</nowiki>.");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "Text and  a [[literal]].");
+        // a tag we don't handle is still honestly Unsupported
+        let t = parse("a <div>html</div> b");
+        assert!(t.diagnostics.iter().any(|d| d.code == "U-HTML"));
     }
 
     #[test]
