@@ -256,3 +256,14 @@
 - **Benchmark:** 无 perf 改动；strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **顺手发现:** 标题块切分依赖空行 → 紧贴正文的标题漏识别（已记进 stage 文档待修；也解释了真实文章 coverage 偏低）。
+
+---
+
+## [2026-06-25] Stage 2：修块切分（标题自成块）
+
+- **Change:** `blocks()` 现在把 `== 标题 ==` 行也当块边界并自成一块（此前只按空行切，紧贴正文的标题漏识别）。抽出 `heading_parts` helper 共用。
+- **Coverage:** **27.1% 不变**——这些 case 此前已零诊断（被当段落里的字面 `==` 文本，无诊断但语义错），所以是**正确性修复**（真实文章标题不再变字面文本），非覆盖率增量。再次印证 coverage ≠ 正确性。
+- **Tests:** `isolates_headings_without_blank_lines`；17 lib 测试绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步:** `<ref>` / nowiki / 注释（会真正推高真实内容 coverage——含 ref 的整块现在被整块判 Unsupported）。

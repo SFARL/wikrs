@@ -50,12 +50,20 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
     for line in s.split_inclusive('\n') {
         let here = off;
         off += line.len();
-        if line.trim().is_empty() {
+        let content = line.trim_end_matches('\n');
+        let is_heading = heading_parts(content).is_some();
+        // A blank line OR a heading line ends the current block; a heading is
+        // additionally its own one-line block (real wikitext rarely blank-pads
+        // headings, so this is what keeps them from gluing onto prose).
+        if content.trim().is_empty() || is_heading {
             if let Some(st) = start.take() {
                 let block = s[st..here].trim_end_matches('\n');
                 if !block.is_empty() {
                     out.push((st, block));
                 }
+            }
+            if is_heading {
+                out.push((here, content));
             }
         } else if start.is_none() {
             start = Some(here);
@@ -70,21 +78,26 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
     out
 }
 
-/// `== heading ==` on a single line → a `Heading` node.
-fn parse_heading(block: &str) -> Option<Node<'_>> {
-    if block.contains('\n') {
+/// If `line` is a single-line heading (`== … ==`), return `(level, inner text)`.
+fn heading_parts(line: &str) -> Option<(u8, &str)> {
+    if line.contains('\n') {
         return None;
     }
-    let t = block.trim();
+    let t = line.trim();
     let lead = t.bytes().take_while(|&b| b == b'=').count();
     let trail = t.bytes().rev().take_while(|&b| b == b'=').count();
     let level = lead.min(trail);
     if level == 0 || t.len() <= level * 2 {
         return None;
     }
-    let inner = t[level..t.len() - level].trim();
+    Some((level.min(6) as u8, t[level..t.len() - level].trim()))
+}
+
+/// `== heading ==` on a single line → a `Heading` node.
+fn parse_heading(block: &str) -> Option<Node<'_>> {
+    let (level, inner) = heading_parts(block)?;
     Some(Node::Heading {
-        level: level.min(6) as u8,
+        level,
         content: parse_inline(&tokenizer::inline(inner)),
     })
 }
@@ -298,6 +311,18 @@ mod tests {
             "History\n\nEarth is the third planet."
         );
         assert!(matches!(p.nodes[0], Node::Heading { level: 2, .. }));
+    }
+
+    #[test]
+    fn isolates_headings_without_blank_lines() {
+        let p = parse("Intro text.\n== History ==\nMore text.");
+        assert!(matches!(p.nodes[0], Node::Paragraph(_)));
+        assert!(matches!(p.nodes[1], Node::Heading { level: 2, .. }));
+        assert!(matches!(p.nodes[2], Node::Paragraph(_)));
+        assert_eq!(
+            render::plain(&p.nodes),
+            "Intro text.\n\nHistory\n\nMore text."
+        );
     }
 
     #[test]
