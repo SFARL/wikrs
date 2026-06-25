@@ -195,3 +195,17 @@
 - **Regression?** none。
 - **里程碑:** AST 第一次能从真实 wikitext 长出来；诊断系统就位（范围外报警而非静默）。
 - **下一步:** ① parser + `render::plain` 接进 CLI/bench 与 strip 对比；② 接 parserTests 的 `#[ignore]` conformance（让"X% 一致"出真实数）；③ 扩子集（列表/外链…），通过率随之爬。
+
+---
+
+## [2026-06-24] 加 Bliki 为第三对比基线 + DESIGN §12 前人分析
+
+- **背景:** 用户问 wikrs vs "blick" → 实为 **Bliki 引擎**（`info.bliki.wiki`，XWiki MediaWiki Syntax 扩展的底层），mature 的 wikitext→HTML（含模板展开），上游已弃、只剩 XWiki fork。
+- **Change:**
+  - `docs/DESIGN.md` §12「前人与竞品」：WikiExtractor / parse_wiki_text / **Bliki** / wikitextparser / wikitextprocessor / Parsoid 对比表 + wikrs 三条差异化（Rust 速度 / 诚实诊断 / 新+活跃）。Bliki = "前人倒在活跃维护"的活样本。
+  - `tools/bliki/`：`BlikiBench.java`（Bliki 渲染微基准）+ `setup.sh`（coursier 取 11 jar + javac）+ README；jar/编译产物 gitignore。
+  - xtask `bench-bliki` 子命令；`docs/TESTING.md` Bliki 进对比基线表 + 命令（顺手刷新 parse_wiki_text/WikiExtractor 过期状态）。
+- **Benchmark（新对比）:** 样例 article（wikitext→HTML）：**Bliki ~0.4 MB/s** vs wikrs strip ~118 MB/s → **约 300× 差距**。诚实标注：Bliki 做的多（全 HTML + 模板），非 apples-to-apples；但量级差距强力支撑速度论点。strip 本身不变 ~118 MiB/s。
+- **Tests:** xtask clippy `-D warnings` 干净；`cargo xtask bench-bliki` 端到端跑通；wikrs 测试不受影响。
+- **Regression?** none。
+- **环境踩坑:** 有 JDK15、无 Maven/coursier；Bliki 模板路径缺类 → `TemplateParserError:NoClassDefFoundError`，用 coursier launcher 解全依赖（11 jar）后正常渲染（1476B→3722B HTML）。

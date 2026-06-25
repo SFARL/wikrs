@@ -82,10 +82,11 @@
 | 基线 | 是什么 | 怎么用 | 状态 |
 |------|--------|--------|------|
 | **MediaWiki `parserTests.txt`** | 正确性 oracle（wikitext→期望 HTML），**GPL** | `cargo xtask fetch-parser-tests` 拉取（不入库）→ `cargo test --test parser_tests` 解析+加载 | ✅ 解析/加载就绪（1077 例）；逐例一致性比对待 Stage 2 `render::html` |
-| **`parse_wiki_text`** | 最认真的民间 Rust 解析器（0.1.5/2018，停更），速度基线 | `cargo bench --bench compare`（dev-dependency，**不进发布物**） | ✅ 基线可跑（样例 ~258 MiB/s）；wikrs `strip` 实现后加入同组 |
-| **WikiExtractor** | Python 事实标准提取器，速度+行为基线 | `tools/wikiextractor/setup.sh`（venv，**pin Python 3.10**）→ `cargo xtask bench-compare <dump>` | ✅ 已装可跑；端到端对比待 wikrs CLI（Stage 1 Task 7） |
+| **`parse_wiki_text`** | 最认真的民间 Rust 解析器（0.1.5/2018，停更），速度基线 | `cargo bench --bench compare`（dev-dependency，**不进发布物**） | ✅ 样例 ~319 MiB/s；与 `wikrs_strip`（~118）同组 |
+| **WikiExtractor** | Python 事实标准提取器，速度+行为基线 | `tools/wikiextractor/setup.sh`（venv，**pin Python 3.10**）→ `cargo xtask bench-compare <dump>` | ✅ 端到端 8.3 MB dump：**wikrs ~22× 更快** |
+| **Bliki**（Java，via XWiki） | mature 的 wikitext→HTML 引擎（含**模板展开**），上游已弃 | `tools/bliki/setup.sh`（JDK + coursier 取 jar）→ `cargo xtask bench-bliki` | ✅ 样例 ~**0.4 MB/s**（wikrs strip ~118，**约 300× 差距**；它做的多但慢得多） |
 
-> `parse_wiki_text` / WikiExtractor 都是 **dev / 外部对比**，不进 wikrs 发布物，不沾它们的 license。parserTests 是 GPL，故只在测试时下载、不 vendor（[DESIGN.md](DESIGN.md) §11）。
+> `parse_wiki_text` / WikiExtractor / **Bliki** 都是 **dev / 外部对比**，不进 wikrs 发布物，不沾它们的 license（Bliki 的 jar + 编译产物 gitignore，不入库）。parserTests 是 GPL，故只在测试时下载、不 vendor（[DESIGN.md](DESIGN.md) §11、前人对比见 §12）。
 > WikiExtractor 3.0.6 用了行内 `(?i)` 正则 flag，Python 3.11+ 直接报错，故 pin 3.10（uv 托管，不动系统 Python）。
 
 ## 命令速查
@@ -100,6 +101,8 @@
 | 跑对比基准（parse_wiki_text 基线） | `cargo bench --bench compare` |
 | 装 WikiExtractor（Python 对比基线） | `tools/wikiextractor/setup.sh` |
 | wikrs vs WikiExtractor 端到端 | `cargo xtask bench-compare <dump>` |
+| 装 Bliki（Java 对比基线） | `tools/bliki/setup.sh` |
+| 跑 Bliki 基准 | `cargo xtask bench-bliki` |
 | 生成差分报告（三个数字） | `cargo xtask diff-report --pages 50000 --seed 42` |
 | 生成支持范围清单 | `cargo xtask supported` |
 

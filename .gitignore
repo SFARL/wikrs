@@ -18,6 +18,11 @@
 # WikiExtractor Python venv (comparison baseline)
 .venv/
 
+# Bliki comparison baseline (downloaded jars + compiled harness)
+/tools/bliki/lib/
+/tools/bliki/out/
+/tools/bliki/.cs
+
 # macOS
 .DS_Store
 

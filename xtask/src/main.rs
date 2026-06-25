@@ -51,6 +51,15 @@ enum Cmd {
         #[arg(long, default_value = "tools/wikiextractor/.venv/bin/python")]
         wikiextractor_python: PathBuf,
     },
+    /// Benchmark the Bliki engine (Java) on a wikitext file (set up via tools/bliki/setup.sh).
+    BenchBliki {
+        /// Wikitext file to render repeatedly.
+        #[arg(default_value = "tests/fixtures/sample_article.wikitext")]
+        wikitext: PathBuf,
+        /// Iterations.
+        #[arg(long, default_value_t = 3000)]
+        iters: usize,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -61,6 +70,7 @@ fn main() -> anyhow::Result<()> {
             dump,
             wikiextractor_python,
         } => bench_compare(&dump, &wikiextractor_python),
+        Cmd::BenchBliki { wikitext, iters } => bench_bliki(&wikitext, iters),
     }
 }
 
@@ -179,6 +189,22 @@ fn report(name: &str, d: Duration, mb: f64) {
         d.as_secs_f64(),
         mb / d.as_secs_f64()
     );
+}
+
+fn bench_bliki(wikitext: &Path, iters: usize) -> anyhow::Result<()> {
+    if !Path::new("tools/bliki/out/BlikiBench.class").exists() {
+        bail!("Bliki is not set up — run `tools/bliki/setup.sh` first");
+    }
+    let status = Command::new("java")
+        .args(["-cp", "tools/bliki/lib/*:tools/bliki/out", "BlikiBench"])
+        .arg(wikitext)
+        .arg(iters.to_string())
+        .status()
+        .context("running java (is a JDK installed?)")?;
+    if !status.success() {
+        bail!("Bliki harness exited with {status}");
+    }
+    Ok(())
 }
 
 fn xml_escape(s: &str) -> String {
