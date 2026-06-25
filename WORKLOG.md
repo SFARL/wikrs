@@ -231,3 +231,14 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **下一步:** 列表（`*`/`#`/`:`/`;`）——会把覆盖率推上去。
+
+---
+
+## [2026-06-25] Stage 2 步骤 2b：列表（flat `*`/`#`）
+
+- **Change:** AST 加 `List{ordered, items}`；`render::plain` 渲染列表（逐项一行）；parser `parse_list`——块内每行单 `*`/`#` → List；嵌套（`**`）/混合/定义（`:`/`;`）仍 → Unsupported（U-LIST）。`flags_unsupported` 测试改用嵌套列表保持 U-LIST 断言。
+- **Coverage:** **24.8% → 27.1%（267→292，+25 例）**。简单列表从 Unsupported 变完全支持。
+- **Tests:** parser `parses_simple_lists`（含嵌套仍 Unsupported）；16 lib 测试绿，clippy 干净。
+- **Benchmark:** strip ~118 MiB/s 不变。
+- **Regression?** none。
+- **下一步:** `<ref>` / nowiki 等再扩；然后步骤 3（`render::plain` 接进 CLI/bench 与 strip 对比）。

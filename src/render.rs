@@ -25,6 +25,13 @@ fn render_into(nodes: &[Node], out: &mut String) {
                 render_into(children, out);
                 out.push_str("\n\n");
             }
+            Node::List { items, .. } => {
+                for item in items {
+                    render_into(item, out);
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
             // Dropped from plain text; surfaced separately via diagnostics.
             Node::Unsupported(_) => {}
         }

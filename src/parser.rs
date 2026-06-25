@@ -26,6 +26,8 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
     for (start, block) in blocks(wikitext) {
         if let Some(heading) = parse_heading(block) {
             nodes.push(heading);
+        } else if let Some(list) = parse_list(block) {
+            nodes.push(list);
         } else if let Some((code, msg)) = unsupported_reason(block) {
             diagnostics.push(Diagnostic::unsupported(
                 code,
@@ -84,6 +86,28 @@ fn parse_heading(block: &str) -> Option<Node<'_>> {
     Some(Node::Heading {
         level: level.min(6) as u8,
         content: parse_inline(&tokenizer::inline(inner)),
+    })
+}
+
+/// A block whose every line starts with a single `*` or `#` → a flat list.
+/// Nested (`**`), mixed, and definition (`:`/`;`) lists return `None` and are
+/// left to `unsupported_reason` (honest: we don't parse them yet).
+fn parse_list(block: &str) -> Option<Node<'_>> {
+    let marker = block.bytes().next()?;
+    if marker != b'*' && marker != b'#' {
+        return None;
+    }
+    let mut items = Vec::new();
+    for line in block.lines() {
+        let lb = line.as_bytes();
+        if lb.first() != Some(&marker) || matches!(lb.get(1), Some(b'*' | b'#' | b':' | b';')) {
+            return None;
+        }
+        items.push(parse_inline(&tokenizer::inline(line[1..].trim_start())));
+    }
+    Some(Node::List {
+        ordered: marker == b'#',
+        items,
     })
 }
 
@@ -284,8 +308,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_simple_lists() {
+        let p = parse("* first\n* '''second'''");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert!(matches!(p.nodes[0], Node::List { ordered: false, .. }));
+        assert_eq!(render::plain(&p.nodes), "first\nsecond");
+        // nested lists stay honestly Unsupported
+        let n = parse("* a\n** nested");
+        assert!(n.diagnostics.iter().any(|d| d.code == "U-LIST"));
+    }
+
+    #[test]
     fn flags_unsupported_blocks_with_diagnostics() {
-        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n* item one\n* item two";
+        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n* a\n** nested";
         let p = parse(wt);
         let codes: Vec<_> = p.diagnostics.iter().map(|d| d.code).collect();
         assert!(codes.contains(&"U-TEMPLATE"), "codes: {codes:?}");

@@ -32,6 +32,12 @@ pub enum Node<'a> {
     Heading { level: u8, content: Vec<Node<'a>> },
     /// A block of inline content.
     Paragraph(Vec<Node<'a>>),
+    /// A flat list. `ordered` = `#` (numbered) vs `*` (bulleted); each item is
+    /// inline content. Nested and definition (`:`/`;`) lists are not parsed yet.
+    List {
+        ordered: bool,
+        items: Vec<Vec<Node<'a>>>,
+    },
     /// A construct outside our declared support range, kept verbatim and
     /// reported via a diagnostic rather than guessed at.
     Unsupported(Cow<'a, str>),
