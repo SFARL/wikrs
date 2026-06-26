@@ -28,6 +28,16 @@ A change is done only when **both** hold:
 - ✅ **Tests pass.** `cargo test --all-features` is green, and the new behavior is covered by a test that would fail without your change.
 - ✅ **The benchmark did not *silently* regress.** Default expectation: improve or hold (within noise).
 
+### The coverage ratchet — don't let it trap you
+
+`cargo test --all-features` includes `coverage_ratchet`, which pins the parserTests cases that parse with **zero diagnostics** by name in `tests/coverage_baseline.txt`. It **fails** if a previously-clean case regresses (a backward-compat break the single coverage *percentage* would hide) — *and* if a change makes new cases pass without recording them. So when a parser/extract change moves coverage, that's expected: re-bless and commit the baseline **with** the change, so its diff is the auditable "which cases this added or (justified) dropped" record:
+
+```
+BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet
+```
+
+A regression you did *not* intend is a real bug — fix it, don't bless it away. The baseline is names only (derived facts about wikrs), never the GPL fixture body.
+
 ### Reading the benchmark honestly
 
 The aspiration is *faster every time* — speed is wikrs's floor value, the thing we can almost always win on. But be honest: not every change can be faster. Handling a new wikitext construct, or a correctness fix, can legitimately cost a few percent. So the real rule isn't "always faster" (that would pressure you to fake it or skip hard cases) — it's:

@@ -6,10 +6,14 @@
 //! conformance comparison is `#[ignore]`d until the engine can render
 //! comparable output (Stage 2: AST -> normalized HTML).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 const FIXTURE: &str = "tests/fixtures/parserTests.txt";
+/// Committed record of which parserTests cases parse with ZERO diagnostics.
+/// Names only — derived facts about wikrs, NOT the GPL fixture body — so it is
+/// safe to commit (unlike `FIXTURE`, which is gitignored). See `coverage_ratchet`.
+const COVERAGE_BASELINE: &str = "tests/coverage_baseline.txt";
 
 /// One `!! test … !! end` case.
 #[derive(Debug, Clone)]
@@ -207,6 +211,110 @@ fn stage2_coverage_rate() {
     eprintln!("blocking diagnostics: {blocking:?}");
     assert!(total > 500);
     assert!(pct > 20.0, "Stage 2 coverage regressed: {pct:.1}%");
+}
+
+/// Compare the blessed baseline against the current passing set. Returns
+/// `(regressed, added)`: names that were in the baseline but no longer pass (a
+/// backward-compat break), and names that newly pass but aren't blessed yet.
+/// `BTreeSet::difference` yields sorted output, so both lists are deterministic.
+fn ratchet_diff(baseline: &BTreeSet<String>, current: &BTreeSet<String>) -> (Vec<String>, Vec<String>) {
+    let regressed = baseline.difference(current).cloned().collect();
+    let added = current.difference(baseline).cloned().collect();
+    (regressed, added)
+}
+
+#[test]
+fn ratchet_diff_reports_regressions_and_additions() {
+    let baseline: BTreeSet<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+    let current: BTreeSet<String> = ["a", "c", "d"].iter().map(|s| s.to_string()).collect();
+    let (regressed, added) = ratchet_diff(&baseline, &current);
+    assert_eq!(regressed, vec!["b".to_string()], "b dropped out of the set");
+    assert_eq!(added, vec!["d".to_string()], "d newly entered the set");
+}
+
+/// Names of cases that currently parse with ZERO diagnostics.
+fn current_passing_set(tests: &[ParserTest]) -> BTreeSet<String> {
+    tests
+        .iter()
+        .filter(|t| wikrs::parser::parse(&t.wikitext).diagnostics.is_empty())
+        .map(|t| t.name.clone())
+        .collect()
+}
+
+/// Read the committed baseline (skips the `#` header and blank lines).
+fn load_baseline() -> BTreeSet<String> {
+    std::fs::read_to_string(COVERAGE_BASELINE)
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Rewrite the baseline from the current passing set (sorted, with a header).
+fn write_baseline(set: &BTreeSet<String>) {
+    let mut body = String::from(
+        "# wikrs coverage baseline — names of parserTests cases that parse with ZERO\n\
+         # diagnostics today. Derived facts about wikrs, NOT the GPL fixture body.\n\
+         # The `coverage_ratchet` test fails if any listed case regresses. Re-bless with:\n\
+         #   BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet\n",
+    );
+    for name in set {
+        body.push_str(name);
+        body.push('\n');
+    }
+    std::fs::write(COVERAGE_BASELINE, body).unwrap();
+}
+
+/// Backward-compatibility ratchet: cases that parse cleanly today must keep
+/// parsing cleanly. The committed baseline is the auditable record of *which*
+/// parserTests cases pass; this test fails if any of them regresses (a silent
+/// coverage drop the single Stage-2 percentage would hide), and also fails if
+/// new cases pass without being blessed — so the record stays exact and every
+/// coverage change is a deliberate, reviewed baseline diff.
+///
+/// Re-bless after an intended change: `BLESS_COVERAGE=1 cargo test --test
+/// parser_tests coverage_ratchet`.
+///
+/// Name-keyed: if two cases share a name the set holds one entry — a rare blind
+/// spot accepted to keep the baseline a human-readable "which tests pass" list.
+#[test]
+fn coverage_ratchet() {
+    if !Path::new(FIXTURE).exists() {
+        eprintln!("SKIP: {FIXTURE} missing — run `cargo xtask fetch-parser-tests`.");
+        return;
+    }
+    let tests = parse_tests(&std::fs::read_to_string(FIXTURE).unwrap());
+    let current = current_passing_set(&tests);
+
+    if std::env::var_os("BLESS_COVERAGE").is_some() {
+        write_baseline(&current);
+        eprintln!("blessed {} passing cases -> {COVERAGE_BASELINE}", current.len());
+        return;
+    }
+
+    let baseline = load_baseline();
+    assert!(
+        !baseline.is_empty(),
+        "{COVERAGE_BASELINE} missing/empty — bless once with \
+         `BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet`"
+    );
+    let (regressed, added) = ratchet_diff(&baseline, &current);
+    assert!(
+        regressed.is_empty(),
+        "BACKWARD-COMPAT REGRESSION: {} case(s) that used to parse cleanly now emit \
+         diagnostics:\n  {}\nIf this is intended, re-bless the baseline.",
+        regressed.len(),
+        regressed.join("\n  "),
+    );
+    assert!(
+        added.is_empty(),
+        "COVERAGE IMPROVED: {} new case(s) parse cleanly but aren't blessed yet:\n  {}\n\
+         Record them: BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet",
+        added.len(),
+        added.join("\n  "),
+    );
 }
 
 /// Per-case conformance against wikrs. Enabled once the engine can produce

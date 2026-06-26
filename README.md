@@ -76,7 +76,7 @@ The headline metric we're building toward: **"X% structurally identical to Parso
 
 > Kept current on every change via the project's `wikrs-dev-workflow` skill. Methodology: [docs/TESTING.md](docs/TESTING.md).
 
-_Last updated: 2026-06-24_
+_Last updated: 2026-06-26_
 
 - **Tests:** green — `cargo test --all-features`
 - **⚡ vs WikiExtractor** (end-to-end, 8.3 MB synthetic dump = 5000 articles, Apple Silicon): wikrs **~22× faster** — ~0.18 s / 47 MB/s vs WikiExtractor ~3.9 s / 2.1 MB/s. Reproduce: `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml`. *(Synthetic dump = the sample article repeated; real heterogeneous dumps will differ — the order of magnitude is the point.)*
@@ -93,6 +93,7 @@ _Last updated: 2026-06-24_
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
 - **Stage 2 parser coverage** (parserTests, 1077 cases): **39.6%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat & definition lists, preformatted blocks, simple tables, refs/nowiki/comments, inline HTML formatting tags). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported — which is why this number went slightly *down* when template handling got more honest, not up). Track: `cargo test --test parser_tests stage2_coverage_rate`.
+- **Backward-compatibility ratchet:** the **427** cleanly-passing cases are pinned by name in [`tests/coverage_baseline.txt`](tests/coverage_baseline.txt) (names only — derived facts about wikrs, not the GPL fixture). `cargo test --test parser_tests coverage_ratchet` **fails if any pinned case regresses**, so coverage can only ratchet *up* and every change to it is a deliberate, reviewed baseline diff. The single coverage *percentage* can rise while individual cases silently break; this catches that. Re-bless an intended change: `BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet`.
 - **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
 ## Documentation

@@ -1,0 +1,431 @@
+# wikrs coverage baseline — names of parserTests cases that parse with ZERO
+# diagnostics today. Derived facts about wikrs, NOT the GPL fixture body.
+# The `coverage_ratchet` test fails if any listed case regresses. Re-bless with:
+#   BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet
+(T21451) Links should refer to the normalized form.
+1. Anchors: suppress newly created empty anchors
+1. Categories should always be serialized on their own line
+1. Headings: Add space before/after == (T53744)
+1. Headings: suppress newly created empty headings
+1. I/B quote minimization: wikitext-only tags should be combined
+1. Indent Pre Nowiki: suppress whitespace at the start of new paragraph
+1. Merge adjacent link nodes as long as at least one element is new
+1. Move format tags outside of WikiLink
+1. Multiple normalizations (html2wt)
+1. T400845: Dom/Handlers/CleanUp.php: Added mw:DisplaySpace spaces removal
+1. Table cells with escapable prefixes
+1. WT Quote Tags: suppress newly created empty style tags
+10. T409669 Regression test: Don't move out format tags when originating as piped unless in edited content
+11. Special case where only newlines separate links (T175416)
+2. Anchors: suppress empty anchors on edits
+2. Headings: Add space before/after == even after hoisted content
+2. Headings: suppress empty headings on edits
+2. I/B quote minimization: wikitext and html tags should not be combined
+2. Merge adjacent link nodes and enable additional normalizations
+2. Move format tags outside of WikiLink with mergeable A tags
+2. T400845: Dom/Handlers/CleanUp.php: Added mw:DisplaySpace spaces removal
+2. WT Quote Tags: suppress empty style tags on edits
+2a. Table cells with escapable prefixes after edits
+2b. Table cells with escapable prefixes after edits
+3. Indent Pre Nowiki: suppress leading whitespace in edited paragraphs
+3. Move format tags outside of WikiLink while preserving formats already outside WikiLink
+3. cats/langlinks and newlines: newline suppression for last list item should RT properly
+3a. Anchors: do not suppress numbered extlinks
+3a. Table cells without escapable prefixes after edits
+3b. Anchors: do not suppress numbered extlinks
+3b. Table cells without escapable prefixes after edits
+4. Do not move format tags outside of WikiLink which includes attributes color, style and class
+4. I/B quote minimization: new content should be minimized with adjacent old content
+4. font tags without attributes should be dropped
+5 quotes, code coverage +1 line
+5 quotes, code coverage +1 line (1)
+5 quotes, code coverage +1 line (2)
+5. T194083 Regression test: Manual edit test to move format tags outside wikilinks
+5a. Merge adjacent quote nodes if they've been edited
+5b. Merge adjacent quote nodes if they've been edited
+6. Regression test: Manual edit test to ensure diff markers are not lost
+6. cats/langlinks: migrateTrailingSolTransparentLinks dom pass should not migrate them when not preceded by newlines
+8. T409669 Regression test: Manual edit test to move format tags outside wikilinks with spaces in target
+9. T409669 Regression test: Don't move out format tags when originating as piped
+<br> to <br />
+<nowiki> inside a link
+<nowiki> unordered list
+<s> or <strike> for strikethrough
+<wbr> is valid wikitext (T54468)
+Accept empty attributes in th-cells
+Accept empty td cell attribute
+Allow aria attributes
+Always escape literal '>' in output, not just after '<'
+Anchor containing a #. (T65430)
+Anchor starting with underscore
+Anchor without href scenarios
+Another italics / bold test
+Attribute test: equals, then nothing
+Attribute test: no value (T54330)
+Attribute test: unquoted but illegal value (hash)
+Attribute test: unquoted value
+Bail on table cell attribute parsing on wikilink
+Blank input
+Broken br tag sanitization
+Broken link
+Broken link with fragment
+Categories and newlines: should behave properly with linkprefix (T87753)
+Category / non-newline whitespace interactions (T359886)
+Category in wikilink
+Category links with multiple namespaces
+Category with different sort key
+Category with identical sort key
+Category with identical sort key, except underscores
+Character reference normalization in link text (T3938)
+Common list
+Confirm that 'apos' named character reference doesn't make it to output (not legal in HTML 4)
+Consecutive <pre>s should not get merged
+Corner case: french spaces in definition list
+Definition list code coverage
+Disabled subpages
+Displayspace processing on embedded fragments
+Do not trim whitespace in links and quotes
+Don't parse <nowiki><span class="error"></nowiki> (T149622)
+Duplicate interlanguage links (T26502)
+Edit comment with bare anchor link (local, as on diff)
+Edit comment with bare anchor link (non-local, as on history)
+Edit comment with bogus subpage link in non-subpage NS (T16080)
+Edit comment with link
+Edit comment with link and link text
+Edit comment with link and link text with suffix
+Edit comment with link with more than one pipe (T99346)
+Edit comment with section link (local, eg in diff view)
+Edit comment with section link (non-local, eg in history list)
+Edit comment with section link and text before it (non-local, eg in history list)
+Edit comment with section link that has a link in it
+Edit comment with subpage link (T16080)
+Edit comment with subpage link and link text (T16080)
+Edited Redirect link should emit a non-piped wikitext link
+Emit simple non-piped link where possible
+Empty LI (T49673)
+Empty LI and TR nodes should not be stripped from top-level content
+Empty attribute crash test (T4067)
+Empty attribute crash test single-quotes (T4067)
+Empty table rows go away
+Ensure that HTML adoption agency algorithm is properly implemented.
+Entities inside <nowiki>
+Escape DOM elements
+Extra new lines before and after lists are preserved
+Extra newlines: More paragraphs with indented comment
+Failing to transform badly formed HTML into correct XHTML
+French spaces in wikitext
+French spacing and spans
+Fuzz testing: Parser13
+Fuzz testing: Parser16
+Fuzz testing: Parser22
+Fuzz testing: URL adjacent extension (no space, dirty; nowiki)
+Fuzz testing: URL adjacent extension (with space, clean)
+HTML Hex character encoding (spells the word "JavaScript")
+HTML Hex character encoding bogus encoding (T28437 regression check)
+HTML Hex character encoding mixed case
+HTML id attribute with Parsoid-like element ids should not be serialized to wikitext
+HTML tag with 'unnecessary' entity encoding in attributes
+HTML tag with broken attribute value quoting
+HTML tag with leading space is parsed as text
+HTML tag with necessary entities in attributes
+HTML5 tags
+Handle title parsing for subpages
+Handling html with a br self-closing tag
+Handling of %0A in URLs
+Handling of &#x0A; in URLs
+Headings: Force sol-transparent links and behavior switches to serialize before/after
+Headings: Replace <br/> with a single whitespace char
+Horizontal ruler (should it add that extra space?)
+Horizontal ruler -- 4+ dashes render hr
+Horizontal ruler -- <4 dashes render as plain text
+Horizontal ruler -- Supports content following dashes on same line
+Horizontal ruler -- does not collapse dashes on consecutive lines
+Horizontal ruler -- eats additional dashes on the same line
+Ignore pipe between table row attributes
+Ignore rel attribute in a-tags during serialization to url-links
+Illegal character references (T106578, T113194)
+Improperly nested inline or quotes tags with whitespace in between
+Incorrectly removing closing slashes from correctly formed XHTML
+Indented table with an empty td
+Indented table with blank lines in between (T85627)
+Inline HTML vs wiki block nesting
+Inline wiki vs wiki block nesting
+Interlanguage links
+Internal link with ca linktrail with apostrophes (T29473)
+Internal link with ca linktrail, surrounded by bold apostrophes (T29473 primary issue)
+Internal link with ca linktrail, surrounded by italic apostrophes (T29473 primary issue)
+Internal link with en linktrail: no apostrophes (T29473)
+Internal link with is link trail and link prefix
+Internal link with kaa linktrail with apostrophes (T29473)
+Interwiki links trounced by handleExternalLinks after early LinkHolderArray expansion
+Invalid header with following text
+Isolated close tags should be treated as literal text (T54760)
+Language link / non-newline whitespace interactions (T359886)
+Link containing "#<" and "#>" % as a hex sequences- these are valid section anchors
+Link containing "#<" and "#>" % as a hex sequences- these are valid section anchors (legacy)
+Link containing "<#" and ">#" as a hex sequences
+Link containing % (not as a hex sequence)
+Link containing % as a double hex sequence interpreted to hex sequence
+Link containing % as a single hex sequence interpreted to char
+Link containing a tilde
+Link containing an ampersand
+Link containing an equals sign
+Link containing double quotes and spaces
+Link containing double-single-quotes '' (T6598)
+Link containing double-single-quotes '' in text (T6598 check)
+Link containing double-single-quotes '' in text embedded in italics (T6598 check)
+Link containing }
+Link prefix/suffixes aren't applied to category links
+Link prefix/suffixes aren't applied to language links
+Link to a subpage from a namespace other than main
+Link to category
+Link to namespace preferred over interwiki with correct rel attribute
+Link to namespaces
+Link to numeric-equivalent title
+Link with 3 brackets
+Link with 4 brackets
+Link with HTML entity in suffix / tail
+Link with double quotes in title part (literal) and alternate part (interpreted)
+Link with multiple ":" in a subpage-supporting namespace (T65636)
+Link with multiple pipes
+Link with prefix
+Link with space in namespace
+Link with suffix
+List items are not parsed correctly following a <pre> block (T2785)
+Lists: Add space after bullets
+Lists: Dont insert newlines in a serialized list item.
+Lists: Serialize correctly even when list content is wrapped in p-tags (like VE does)
+Lists: Serialize correctly even when list tags has unneeded whitespace between tags
+Localized media link
+Media link
+Media link from missing resource (parsoid-only)
+Media link from missing resource, localized (parsoid-only)
+Media link redirect
+Media link to nonexistent file (T3702)
+Media link with multiple options
+Media link with nested wikilinks
+Media link with text
+Misnested link nested in span
+Mixing markup for italics and bold
+Multiple newlines after tables are converted to p-br-p tags
+Multiple spaces in titles should normalize to a single underscore
+Namespace takes precedence over interwiki link (T53680)
+Namespaced link must have a title
+Namespaced link must have a title (bad fragment version)
+Nested lists 9 (extension interaction)
+Nested wikilink syntax in wikilink syntax that parses as wikilink in extlink
+Nesting of <bdo>
+Nesting of <em>
+Nesting of <kbd>
+Nesting of <q>
+Nesting of <strong>
+Never serialize a-tag as html, no matter what attributes it has
+Never serialize a-tag as html, regardless of what data-parsoid has to say
+New category links (href variations)
+New interlanguage links (href variations)
+New links that end in spaces
+New list is serialized on newlines
+New wiki links (content string variations)
+New wiki links (href variations)
+New wikilinks should be serialized properly
+Non-breaking spaces in title
+Non-empty attributes in th-cells
+Nonexistent special page link with fragment
+Normalizations should be restricted to edited content
+Normalize hrefs properly before testing for invalid link targets (T72894)
+Nowiki and french spacing
+Numbered list
+Only html p-tag is strong indent pre suppressing
+Paragraphs with extra newline spacing
+Paragraphs with newline spacing with non-empty white-space lines in between
+Parents of subpages, one level up
+Parents of subpages, one level up, not named
+Parents of subpages, two levels up
+Parents of subpages, two levels up, with lots of extra trailing slashes.
+Parents of subpages, two levels up, without trailing slash or name.
+Parsing an URL
+Parsing of overlapping (improperly nested) inline html tags
+Parsoid T55221: Wikilinks should be properly entity-escaped
+Parsoid link bracket escaping
+Parsoid link prefix escaping
+Parsoid link trail escaping
+Parsoid should accept interwiki shortcuts
+Parsoid should not accept invalid interwiki shortcuts
+Parsoid-centric test: Whitespace in ext- and wiki-links should be preserved
+Parsoid-specific test: Wikilinks with &nbsp; should RT properly
+Parsoid: Broken br tag recognition
+Parsoid: Escape nowiki with trailing space in tags
+Parsoid: Escape weird noWikI capitalizations
+Parsoid: Serialize a genuine category link without colon escape
+Parsoid: Serialize link to category page with colon escape
+Parsoid: Serialize link to file page with colon escape
+Parsoid: dot-slash prefixed wikilinks
+Parsoid: handle constructor well
+Pipe in html attribute is link description
+Piped link
+Piped link to URL
+Piped link to namespace
+Piped link with 3 brackets
+Piped link with comment in link text
+Piped link with empty link text
+Piped link with empty link text - 2
+Piped link with extlink-like text
+Piped link with multiple pipe characters in link text
+Piped link with no link text
+Plain link to URL
+Plain link to URL containing special characters, with link text (see T213950).
+Plain link to URL with link text
+Plain link to page with question mark in title
+Plain link to protocol-relative URL
+Plain link to protocol-relative URL with link text
+Plain link, capitalized
+Plain link, uncapitalized
+Properly escape nowiki when combined with other wiki markup
+Punctuation: nbsp before exclamation
+Purely hash wikilink
+Purely hash wikilink on category page
+Purely hash wikilink on file page
+RT-ed inter-element separators should be valid separators
+RTL (\u200f) and LTR (\u200e) markers around category tags should be stripped
+RTL (\u200f) and LTR (\u200e) markers should not be stripped if followed by a text node
+Relative subpage noslash link
+Remove p tags surrounding a single element in a figcaption
+Sanitizer: Avoid unnecessary percent encoded characters in interwiki links
+Sanitizer: Closing of closed but not open tags
+Sanitizer: Closing of open but not closed tags
+Sanitizer: Escaping of spaces, multibyte characters, colons & other stuff in id=""
+Sanitizer: Escaping of spaces, multibyte characters, colons & other stuff in id="" (legacy)
+Sanitizer: Strip comments from CSS attributes
+Sanitizer: Validating id attribute uniqueness (T6515, T8301)
+Sanitizer: Validating the contents of the id attribute (T6515)
+Sanitizer: Validating the contents of the id attribute, empty attribute syntax (T6515)
+Sectiion with all-equals
+Section extraction prefixed by comment (section 1)
+Section extraction prefixed by comment (section 2)
+Section extraction test (nonexistent section 11)
+Section extraction test (section 0)
+Section extraction test (section 1)
+Section extraction test (section 10)
+Section extraction test (section 2)
+Section extraction test (section 3)
+Section extraction test (section 4)
+Section extraction test (section 5)
+Section extraction test (section 6)
+Section extraction test (section 7)
+Section extraction test (section 8)
+Section extraction test (section 9)
+Section extraction test with bogus <nowiki> heading (section 1)
+Section extraction test with bogus <nowiki> heading (section 2)
+Section extraction test with bogus heading (section 1)
+Section extraction test with bogus heading (section 2)
+Section extraction test with comment after heading (section 1)
+Section extraction test with comment after heading (section 2)
+Section extraction, heading followed by pre with 19 spaces (T8398 check)
+Section extraction, heading followed by pre with 20 spaces (T8398)
+Section replacement test (section 0)
+Section replacement test (section 1)
+Section replacement test (section 10)
+Section replacement test (section 2)
+Section replacement test (section 3)
+Section replacement test (section 4)
+Section replacement test (section 5)
+Section replacement test (section 6)
+Section replacement test (section 7)
+Section replacement test (section 8)
+Section replacement test (section 9)
+Section replacement test with initial whitespace (T15728)
+Self-link hash fragment should be escaped
+Self-link to numeric title
+Self-link to section should not be bold
+Selser: New comments should not be lost
+Serialization of purely hash wikilink
+Serialize <a> tags with invalid link targets as plain text
+Serialize interwiki links pointing to the current wiki as plain wiki links (T67869)
+Serialize multi-line indent-pre starting with wikitext syntax
+Serializer shouldn't blindly user dataParsoid.srcTagName
+Simple category
+Simple category with whitespace as sort key
+Simple list
+Simple paragraph
+Single-line or multiline-comments can follow headings
+Space normalisation on autocomment (T24784)
+Spaced heading with element
+Special page link with fragment
+Strip span tags added to mark misnested links
+Stripped tag in list
+Subpage link
+Subpage noslash link
+Subpage with namespaces
+Substrings resembling wikitext in hrefs should not get nowiki escapes
+T149209: Selser: Handle newlines in table cells properly
+T17196: localised external link numbers
+T199926: Hash only interwiki link
+T199926: html arrow wt: Parsoid sometimes trips up on verticalbar chars in hrefs
+T2002: [[page|http://url/]] should link to page, not http://url/
+T21052 U+3000 IDEOGRAPHIC SPACE should terminate bracketed external links
+T21052 U+3000 IDEOGRAPHIC SPACE should terminate external images links
+T21052 U+3000 IDEOGRAPHIC SPACE should terminate free external links
+T2337: Escaped self-links should be bold
+T236868: Un-closed <noinclude> caused bad SourceRange length
+T3186 news: in the middle of text
+T335847: Resolve forward slash title
+T335847: Resolve subpage of control title
+T335847: Resolve subpage of forward slash title
+T36939 - Case insensitive link parsing (HttP://)
+T36939 - Case insensitive link parsing ([HttP:// title])
+T36939 - Case insensitive link parsing ([HttP://])
+T378404: Don't armor inward-pointing French quotes
+T4095: link with pipe and three closing brackets
+T4095: link with pipe and three closing brackets, version 2
+T4095: link with three closing brackets
+T45661: Piped links with identical prefixes
+T4702: Mismatched <i>, <b> and <a> tags are invalid
+T5158: Test for French spaces in attributes
+T51672: Test for brackets in attributes of elements in external link texts
+T56262: New entities
+T71950: 1. Put nowiki as close to cause as possible, even with non-quote escapable chars
+T71950: 2. Put nowiki as close to cause as possible, after ' :'
+T72867: Don't block XML namespace declaration
+T72875: Test for brackets in attributes of elements in internal link texts
+T7918: autonumbering
+Table attribute legitimate extension
+Table attribute safety
+Table multiple attributes correction
+Table with broken attribute value quoting
+Table with broken attribute value quoting on consecutive lines
+Testing selser after addition of new row before first row (T125419)
+Text with HTML5 semicolon-less entity (should not decode)
+Unbalanced includeonly and noinclude tags
+Unclosed formatting tags that straddle lists are closed and reopened
+Verify that displaytitle works (T24501) AllowDisplayTitle=false no DISPLAYTITLE
+Verify that displaytitle works (T24501) no displaytitle
+Verify that without displaytitle the title encodes & to &amp; (T291985)
+WTS change modes
+WTS of an autolink surrounded by square brackets (T220018)
+WTS of an external link surrounded by square brackets (T220018)
+WTS of autolink-like text after an autolink (T108563)
+WTS of autolinks with escapes (editing)
+WTS of autolinks with nowikis (round-trip)
+WTS of autolinks with trailing/surrounding context
+WTS of edited autolink surrounded by square brackets (T220018)
+WTS of edited autolink-like text (T103364)
+WTS of edited external link surrounded by square brackets (T220018)
+WTS of newly-authored autolink-like text (T103364)
+Wikilink extlink precedence
+Wikilink in wikilink
+Wikilink with only closing tag in target
+Wikilinks with : should roundtrip correctly, with and without redlinks
+Wikilinks with backslashes should be urlencoded in href (T415315)
+__proto__ is treated as normal wikitext (T105997)
+cats/langlinks: migrateTrailingSolTransparentLinks dom pass should not get tripped by comments and whitespace
+message transform: should not transform wiki markup
+mw:ExtLink -vs- mw:WikiLink (T94723)
+nowiki 3
+percent-encoding and + signs in comments (T28410)
+percent-encoding and + signs in internal links (T28410)
+table with multiple empty attribute values
+text with amp in the middle of nowhere
+text with character entity: eacute
+text with entity-escaped character entity-like string: eacute
+text with undefined character entity: xacute
+unclosed internal link XSS (T137264)

@@ -361,3 +361,14 @@
 - **Benchmark:** strip ~118 MiB/s 不变。
 - **Regression?** none。
 - **现状（直方图）:** W-TEMPLATE(368，丢+警告) / U-HTML(301，结构标签) / U-TABLE(54，复杂表) / U-LIST(47，嵌套) / U-PRE(13)。
+
+---
+
+## [2026-06-26] backward-compat ratchet（覆盖率只能涨不能悄悄跌）
+
+- **Change:** 加 backward-compatibility 棘轮。`tests/coverage_baseline.txt` 钉住当前 **427** 个"零诊断"干净通过的 case（**只存名字** —— 派生自 wikrs 的事实，非 GPL fixture 正文，可安全提交）。新增 `coverage_ratchet` 测试：旧 case 退化（曾干净、现在报诊断）→ **硬失败**并列出退化的 case 名；新 case 干净通过但未登记 → 失败并提示 bless。`BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet` 重新生成 baseline。
+- **解决的问题:** 单一覆盖率百分比会**掩盖个案回退** —— 某次改动让 10 个新 case 过、同时弄坏 8 个旧 case，% 还在涨但已 break backward compatibility 且看不出来。棘轮把"过了哪些 test"变成 repo 里可审计的名单，每次变动都是一条经审阅的 baseline diff。
+- **Tests:** TDD —— 先写纯逻辑单测 `ratchet_diff_reports_regressions_and_additions`（red：函数不存在 → green）；再接集成 `coverage_ratchet`。**planted-regression 实测**：往 baseline 塞一个假名字 → 测试如期 FAIL 并点名该 case → 再 bless 复原。全量绿（lib 22 + parser_tests 6/1 ignored + cli 3 + dump/snapshots/robustness），clippy `--all-targets` 干净。
+- **Benchmark:** **仅测试代码改动，`src/` 引擎零改动 → 无性能影响。** 今日机器读数 ast 154–160 / strip 116 / parse_wiki_text 303–305 MiB/s，连跑两次全线同向 −2%/run（含我无法影响的外部 crate parse_wiki_text）→ 系机器负载噪声，非回退；引擎吞吐维持既有 **~174 MiB/s**。
+- **Regression?** none（test-only；棘轮本身就是防回退的闸门）。
+- **下一步:** 后续每次扩子集/改 parser，先 `coverage_ratchet` 把关，再 bless 把新通过的 case 登记进 baseline（连同 code 一起提交）。
