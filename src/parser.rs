@@ -606,6 +606,24 @@ mod tests {
     }
 
     #[test]
+    fn keeps_inner_of_noinclude_onlyinclude() {
+        // On the page itself, <noinclude>/<onlyinclude> content SHOWS — keep it,
+        // drop the tags. (<includeonly>, which hides content, stays Unsupported:
+        // hiding is unsafe across our per-block tokenizer, so we honestly flag it.)
+        let p = parse("a<noinclude>b</noinclude>c");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "abc");
+        let o = parse("Goodbye <onlyinclude>Hello world</onlyinclude>");
+        assert!(o.diagnostics.is_empty(), "diags: {:?}", o.diagnostics);
+        assert_eq!(render::plain(&o.nodes), "Goodbye Hello world");
+        // <includeonly> stays honestly flagged (we don't fake hiding its content)
+        assert!(parse("x<includeonly>y</includeonly>")
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "U-HTML"));
+    }
+
+    #[test]
     fn parses_preformatted_blocks() {
         let p = parse(" code line one\n code [[link|two]]");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);

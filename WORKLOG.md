@@ -396,3 +396,15 @@
 - **Benchmark:** ast **~159 MiB/s**（strip 119 / parse_wiki_text 310 都在 idle 基线），相对上次 ~155 **持平**（噪声内）。tokenizer 改动没拖慢——`<div>`/`<center>` 在样例文章里少见，`tag_close` 扫描 ≈ `find('>')` 成本。
 - **Regression?** none。
 - **现状（直方图）:** W-TEMPLATE(389) / U-HTML(174) / U-TABLE(54) / U-LIST(47) / U-PRE(14)。U-HTML 仍是第二大但已腰斩；剩下的多是 HTML 表格/列表/test 扩展标签 + 模板边角。
+
+---
+
+## [2026-06-26] Stage 2：转写控制标签 `<noinclude>`/`<onlyinclude>`（收尾 U-HTML 干净子集）
+
+- **Change:** `tag_kind` 把 `noinclude`/`onlyinclude` 改判 `Transparent`——这俩的内容在**被渲染的页面本身**上是**显示**的（转写时才有别），所以丢壳留文是对的。**`includeonly` 故意留 Unsupported**：它要**隐藏**内容，而跨块的 includeonly（T8563"被 includeonly 抑制的小节"）在我们的逐块 tokenizer 下会**静默把本该隐藏的内容显示出来** = 违反 D2，所以诚实标记、不假装处理。
+- **Coverage:** **47.1% → 47.8%（507→515，+8）**，全是 noinclude/onlyinclude 用例。
+- **D2 by construction:** transparent 解包**不可能伪造结构**——它只丢标签、留文本，文本再走正常 parser；最坏是文本不完美（如 noinclude 块内的 `==x==` 被当字面文本而非标题渲染，1 例），但文本不丢、结构不假。所以这类改动天然安全。
+- **Tests:** `keeps_inner_of_noinclude_onlyinclude`（red→green，并断言 includeonly 仍 U-HTML）。25 lib 绿、全量绿、clippy 干净。
+- **Benchmark:** ast **~161 MiB/s**，`change:` −0.08%（跨零=噪声内）。加两个 match 分支零运行时成本，符合预期。
+- **Regression?** none。
+- **现状（直方图）:** W-TEMPLATE(391) / U-HTML(159) / U-TABLE(56) / U-LIST(49) / U-PRE(14)。**覆盖率 chipping 已近诚实天花板**：剩下 U-HTML 多是 HTML 表格/列表（黏连风险）/test 扩展标签 + includeonly + 模板边角；U-TABLE/U-LIST/U-PRE 基本是误报+模板 fostering。再往上要么改方向（差分"三个数字"），要么 block 分类器 span 感知。

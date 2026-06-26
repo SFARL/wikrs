@@ -131,7 +131,10 @@ pub(crate) fn tag_kind(name_lower: &str) -> TagKind {
         | "u" | "s" | "strike" | "del" | "ins" | "abbr" | "cite" | "q" | "var" | "kbd" | "samp"
         | "mark" | "dfn" | "bdi" | "bdo" | "time" | "data" | "font"
         // Presentational block containers: no text semantics → unwrap to text.
-        | "center" | "div" | "blockquote" | "p" => TagKind::Transparent,
+        | "center" | "div" | "blockquote" | "p"
+        // Transclusion control whose content shows on the page we render.
+        // `includeonly` (which *hides* content) deliberately stays Unsupported.
+        | "noinclude" | "onlyinclude" => TagKind::Transparent,
         _ => TagKind::Unsupported,
     }
 }

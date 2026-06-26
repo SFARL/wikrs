@@ -53,6 +53,7 @@
 <br> to <br />
 <nowiki> inside a link
 <nowiki> unordered list
+<onlyinclude> on a page
 <s> or <strike> for strikethrough
 <wbr> is valid wikitext (T54468)
 Accept empty attributes in th-cells
@@ -115,6 +116,7 @@ Edited Redirect link should emit a non-piped wikitext link
 Element with broken attribute syntax
 Elements with solidus in various attribute positions
 Emit simple non-piped link where possible
+Empty <noinclude>
 Empty LI (T49673)
 Empty LI and TR nodes should not be stripped from top-level content
 Empty attribute crash test (T4067)
@@ -236,6 +238,7 @@ Multiple spaces in titles should normalize to a single underscore
 Namespace takes precedence over interwiki link (T53680)
 Namespaced link must have a title
 Namespaced link must have a title (bad fragment version)
+Nested <noinclude>s
 Nested lists 1
 Nested lists 10 (list and span siblings: wt2wt regression)
 Nested lists 3 (first element empty)
@@ -257,6 +260,7 @@ New list is serialized on newlines
 New wiki links (content string variations)
 New wiki links (href variations)
 New wikilinks should be serialized properly
+Newly inserted noinclude tags do not need newlines before/after
 No regressions on internal links following category (T174639)
 Non-breaking spaces in title
 Non-empty attributes in th-cells
@@ -372,6 +376,7 @@ Section extraction test with comment after heading (section 1)
 Section extraction test with comment after heading (section 2)
 Section extraction, heading followed by pre with 19 spaces (T8398 check)
 Section extraction, heading followed by pre with 20 spaces (T8398)
+Section extraction, heading surrounded by <noinclude>
 Section replacement test (section 0)
 Section replacement test (section 1)
 Section replacement test (section 10)
@@ -465,6 +470,8 @@ Table with broken attribute value quoting
 Table with broken attribute value quoting on consecutive lines
 Testing selser after addition of new row before first row (T125419)
 Text with HTML5 semicolon-less entity (should not decode)
+Un-closed <noinclude>
+Un-closed <onlyinclude>
 Unbalanced includeonly and noinclude tags
 Unclosed formatting tags that straddle lists are closed and reopened
 Verify that displaytitle works (T24501) AllowDisplayTitle=false no DISPLAYTITLE
@@ -503,6 +510,7 @@ new support for bdi element (T33817)
 nowiki 3
 percent-encoding and + signs in comments (T28410)
 percent-encoding and + signs in internal links (T28410)
+preload: check <onlyinclude>
 table with multiple empty attribute values
 text with amp in the middle of nowhere
 text with character entity: eacute
