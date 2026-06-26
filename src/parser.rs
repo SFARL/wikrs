@@ -569,8 +569,8 @@ mod tests {
             parse("Text<ref name=x>cite</ref> and <!-- hidden --> a <nowiki>[[literal]]</nowiki>.");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert_eq!(render::plain(&p.nodes), "Text and  a [[literal]].");
-        // a tag we don't handle is still honestly Unsupported
-        let t = parse("a <div>html</div> b");
+        // a structural tag we can't flatten to text is still honestly Unsupported
+        let t = parse("a <table>html</table> b");
         assert!(t.diagnostics.iter().any(|d| d.code == "U-HTML"));
     }
 
@@ -579,6 +579,30 @@ mod tests {
         let p = parse("Use <code>x</code> and <b>'''bold'''</b> and a<br>break.");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert_eq!(render::plain(&p.nodes), "Use x and bold and a break.");
+    }
+
+    #[test]
+    fn keeps_inner_of_transparent_block_tags() {
+        // div/center/blockquote/p are presentational containers with no text
+        // semantics: keep the inner text, drop the wrapper, no diagnostic — the
+        // same treatment <code>/<b> already get, just for block-level containers.
+        for wt in [
+            "<div id=\"rock\">HTML rocks</div>",
+            "<center>'''foo'''</center>",
+            "<blockquote>a quote</blockquote>",
+            "<p>para</p>",
+        ] {
+            let p = parse(wt);
+            assert!(p.diagnostics.is_empty(), "{wt:?} -> diags {:?}", p.diagnostics);
+        }
+        assert_eq!(
+            render::plain(&parse("<div id=\"rock\">HTML rocks</div>").nodes),
+            "HTML rocks"
+        );
+        assert_eq!(render::plain(&parse("<center>'''foo'''</center>").nodes), "foo");
+        // a genuinely structural tag we can't flatten to text stays flagged
+        let t = parse("<table><tr><td>x</td></tr></table>");
+        assert!(t.diagnostics.iter().any(|d| d.code == "U-HTML"), "diags: {:?}", t.diagnostics);
     }
 
     #[test]
@@ -621,7 +645,7 @@ mod tests {
 
     #[test]
     fn flags_unsupported_blocks_with_diagnostics() {
-        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n<div>raw block</div>";
+        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n<table>raw block</table>";
         let p = parse(wt);
         let codes: Vec<_> = p.diagnostics.iter().map(|d| d.code).collect();
         assert!(codes.contains(&"W-TEMPLATE"), "codes: {codes:?}"); // template dropped (warning)

@@ -383,3 +383,16 @@
 - **Benchmark（含一处诚实修正）:** 本次改动对 ast 路线 **持平**：`change:` −0.3% [−1.2%, +0.6%]，跨零 = 噪声内。但顺手发现 **README 的 ~174 MiB/s 是过期数**：本次 strip(~117)/parse_wiki_text(~305) 都在各自 idle 基线上（机器没负载），ast 实测稳定在 **~155 MiB/s**（连跑 4 次 153–160）。174 是 tables 提交之前的数——tables 把 `parse_table` 加进了 ast 路线却**只重测了 strip、没重测 ast**，于是我上一条 ratchet 还把 155 误判成"噪声"、继续carry 174。**已改正**：README ast 174→**155**、"~1.5× faster than strip"→"~1.3×"。
 - **Regression?** 本次改动无回退（per-change 持平）。174→155 的差距**早于本次**、追溯到 tables 提交（ast 路线首次被诚实重测才暴露）——正是 skill 警告的"性能悄悄回退被过期数字掩盖"，现已纠正。
 - **现状（直方图）:** W-TEMPLATE(369) / U-HTML(299) / U-TABLE(54) / U-LIST(40，仅剩不规则嵌套) / U-PRE(13)。下一个可治项：U-PRE(13) 或复杂表(54)。
+
+---
+
+## [2026-06-26] Stage 2：透明 HTML 容器标签（最大单次覆盖率跃升）⭐
+
+- **先调查后动手:** dump 了 U-PRE/U-TABLE/U-HTML 三类。**U-PRE/U-TABLE 是死胡同**（误报噪声 + 模板 fostering 边角，0 净覆盖率，见 [[wikrs-upre-deadend]]）；**U-HTML 才是金矿**——247 例里 191 例是"纯 U-HTML、无模板"的干净候选，被 `<div>`(80)/`<center>`/`<blockquote>`/`<p>` 等卡住。
+- **Change:** `tag_kind` 把表现型容器标签 `div`/`center`/`blockquote`/`p` 从 `Unsupported` 改判 `Transparent`（单一中枢——同时驱动 `has_tag` 的块级 U-HTML 标记和 tokenizer 的解包）。这些标签无文本语义，丢壳留文，跟 `<code>`/`<b>` 一个待遇。另把 transparent/void 的闭合 `>` 查找改为**引号感知**（`tag_close`）：属性值里的 `>`（如 `<div title="a>b">`）不再截断标签体。
+- **Coverage:** **40.2% → 47.1%（433→507，+74）**，**单次最大跃升**。U-HTML 299→174。（U-LIST +7 / W-TEMPLATE +20：解包容器后，原本被 `<div>` 包住的列表/模板浮现出来 → 诚实，我们现在看得更深。）
+- **诚实抽查（关键）:** 我把全部 74 个新通过 case 的 **输入→输出逐个看了**。~70 个干净抽文（`<div id=x>HTML rocks</div>`→`HTML rocks`、blockquote 段落、center 格式）。**~3 个是对抗性畸形 HTML**（T4304/T5244 属性安全、odd-caps nowiki）输出有点脏（漏属性尾巴），但**只是文本脏、没有伪造结构**——没越过 D2 红线（"绝不静默重塑成貌似对的结构"）。这是已知边界，记在此。
+- **Tests:** TDD `keeps_inner_of_transparent_block_tags`（red→green）；改两个把 `<div>` 当"不支持样例"的旧测试 → 换 `<table>`（仍 Unsupported）。24 lib 绿、全量绿、clippy 干净、快照不变。
+- **Benchmark:** ast **~159 MiB/s**（strip 119 / parse_wiki_text 310 都在 idle 基线），相对上次 ~155 **持平**（噪声内）。tokenizer 改动没拖慢——`<div>`/`<center>` 在样例文章里少见，`tag_close` 扫描 ≈ `find('>')` 成本。
+- **Regression?** none。
+- **现状（直方图）:** W-TEMPLATE(389) / U-HTML(174) / U-TABLE(54) / U-LIST(47) / U-PRE(14)。U-HTML 仍是第二大但已腰斩；剩下的多是 HTML 表格/列表/test 扩展标签 + 模板边角。

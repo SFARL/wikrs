@@ -110,11 +110,13 @@ enum TagSpan<'a> {
 pub(crate) enum TagKind {
     Ref,
     Nowiki,
-    /// Inline formatting (`<b>`, `<span>`, …): drop the tag, keep the inner text.
+    /// Inline formatting (`<b>`, `<span>`, …) and presentational block containers
+    /// (`<div>`, `<center>`, `<blockquote>`, `<p>`): drop the tag, keep the inner
+    /// text. These carry no text semantics we'd lose by unwrapping them.
     Transparent,
     /// Void element (`<br>`, `<hr>`): a word/line break in plain text.
     Void,
-    /// Structural/unknown (`<div>`, `<table>`, …): out of range → diagnostic.
+    /// Structural/unknown (`<table>`, `<ul>`, unknown tags): out of range → diagnostic.
     Unsupported,
 }
 
@@ -124,9 +126,12 @@ pub(crate) fn tag_kind(name_lower: &str) -> TagKind {
         "ref" => TagKind::Ref,
         "nowiki" => TagKind::Nowiki,
         "br" | "hr" | "wbr" => TagKind::Void,
+        // Inline formatting.
         "b" | "i" | "em" | "strong" | "span" | "code" | "tt" | "small" | "big" | "sub" | "sup"
         | "u" | "s" | "strike" | "del" | "ins" | "abbr" | "cite" | "q" | "var" | "kbd" | "samp"
-        | "mark" | "dfn" | "bdi" | "bdo" | "time" | "data" | "font" => TagKind::Transparent,
+        | "mark" | "dfn" | "bdi" | "bdo" | "time" | "data" | "font"
+        // Presentational block containers: no text semantics → unwrap to text.
+        | "center" | "div" | "blockquote" | "p" => TagKind::Transparent,
         _ => TagKind::Unsupported,
     }
 }
@@ -155,10 +160,31 @@ fn tag_span(s: &str, i: usize) -> Option<TagSpan<'_>> {
     match tag_kind(&rest[name_start..j].to_ascii_lowercase()) {
         TagKind::Ref => ref_end(rest).map(|e| TagSpan::Drop(i + e)),
         TagKind::Nowiki => nowiki_span(rest).map(|(inner, e)| TagSpan::Keep(inner, i + e)),
-        TagKind::Transparent => rest[j..].find('>').map(|k| TagSpan::SkipTag(i + j + k + 1)),
-        TagKind::Void => rest[j..].find('>').map(|k| TagSpan::Space(i + j + k + 1)),
+        TagKind::Transparent => tag_close(rest, j).map(|e| TagSpan::SkipTag(i + e)),
+        TagKind::Void => tag_close(rest, j).map(|e| TagSpan::Space(i + e)),
         TagKind::Unsupported => None,
     }
+}
+
+/// From `rest` (which starts at `<`), with `j` past the tag name, return the
+/// offset within `rest` just past the tag's closing `>`. Skips any `>` inside a
+/// quoted attribute value (`<div style="a>b">` closes at the second `>`, not the
+/// first) — without this, a transparent tag with a complex attribute would mangle
+/// its body. `None` if the tag is never closed.
+fn tag_close(rest: &str, j: usize) -> Option<usize> {
+    let b = rest.as_bytes();
+    let mut k = j;
+    let mut quote = 0u8; // 0 = outside quotes, else the open quote byte
+    while k < b.len() {
+        match b[k] {
+            q if q == quote => quote = 0,
+            b'"' | b'\'' if quote == 0 => quote = b[k],
+            b'>' if quote == 0 => return Some(k + 1),
+            _ => {}
+        }
+        k += 1;
+    }
+    None
 }
 
 /// `rest` starts with `<`. If it opens a `<ref …>`/`<ref … />`, return the
