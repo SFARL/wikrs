@@ -408,3 +408,15 @@
 - **Benchmark:** ast **~161 MiB/s**，`change:` −0.08%（跨零=噪声内）。加两个 match 分支零运行时成本，符合预期。
 - **Regression?** none。
 - **现状（直方图）:** W-TEMPLATE(391) / U-HTML(159) / U-TABLE(56) / U-LIST(49) / U-PRE(14)。**覆盖率 chipping 已近诚实天花板**：剩下 U-HTML 多是 HTML 表格/列表（黏连风险）/test 扩展标签 + includeonly + 模板边角；U-TABLE/U-LIST/U-PRE 基本是误报+模板 fostering。再往上要么改方向（差分"三个数字"），要么 block 分类器 span 感知。
+
+---
+
+## [2026-06-26] Stage 2：HTML 列表标签（收官 U-HTML 干净 chipping，破 49%）
+
+- **Change:** `tag_kind` 把 `ul`/`ol`/`li`/`dl`/`dt`/`dd` 改判 `Transparent`。**靠源码里 item 之间本就有的换行**（语料里 HTML 列表都是 `</li>\n<li>`）分隔，不合成 bullet——跟 wiki 列表 plain 渲染一个路子（文本上行、无符号）。
+- **Coverage:** **47.8% → 49.0%（515→528，+13）**。U-HTML 159→139。
+- **诚实抽查（关键，怕黏连）:** 逐个看了全部 13 个新通过 case 的输入→输出。**全干净、零黏连**——每个 case 的 item 间都有源码换行 → "One\nTwo"；唯一的单行 case 只有一个 item（无从黏）。1 例（多重空行）只是间距脏，不是黏连/假结构。transparent 解包本就不会伪造结构（见上一条）。
+- **Tests:** `keeps_inner_of_html_lists`（red→green）。26 lib 绿、全量绿、clippy 干净。
+- **Benchmark:** ast **~159 MiB/s**，持平（又是纯 match 分支，零成本）。
+- **Regression?** none。
+- **本会话 U-HTML 战果:** 透明容器(div…) + 转写标签(noinclude…) + HTML 列表，U-HTML **299→139**，coverage **40.2%→49.0%**。**干净 chipping 到此为止**：剩下的 U-HTML(139) 是 HTML 表格/test 扩展标签/includeonly + 模板边角，U-TABLE/U-LIST/U-PRE 是误报+fostering——都不是干净可拿的。**~49% 是不展开模板前提下的诚实天花板。** 下一步应换方向：差分"三个数字"（声誉证据）或 block 分类器 span 感知。

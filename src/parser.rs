@@ -624,6 +624,15 @@ mod tests {
     }
 
     #[test]
+    fn keeps_inner_of_html_lists() {
+        // HTML list tags unwrap to their text; items stay separated by the source
+        // newlines between them (we synthesize no bullets — same as wiki lists).
+        let p = parse("<ul>\n<li>One</li>\n<li>Two</li>\n</ul>");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "One\nTwo");
+    }
+
+    #[test]
     fn parses_preformatted_blocks() {
         let p = parse(" code line one\n code [[link|two]]");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);

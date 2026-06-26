@@ -36,6 +36,7 @@
 3a. Table cells without escapable prefixes after edits
 3b. Anchors: do not suppress numbered extlinks
 3b. Table cells without escapable prefixes after edits
+4. Category at the end of a bare <li> list item
 4. Do not move format tags outside of WikiLink which includes attributes color, style and class
 4. I/B quote minimization: new content should be minimized with adjacent old content
 4. font tags without attributes should be dropped
@@ -97,6 +98,7 @@ Do not trim whitespace in links and quotes
 Don't Allow tabindex > 0
 Don't allow tabindex -1
 Don't fall for the self-closing div
+Don't paragraph-wrap empty newlines between HTML list items
 Don't parse <nowiki><span class="error"></nowiki> (T149622)
 Duplicate interlanguage links (T26502)
 Edit comment with bare anchor link (local, as on diff)
@@ -140,8 +142,17 @@ Fuzz testing: URL adjacent extension (with space, clean)
 HTML Hex character encoding (spells the word "JavaScript")
 HTML Hex character encoding bogus encoding (T28437 regression check)
 HTML Hex character encoding mixed case
+HTML bullet list, closed tags (T7497)
+HTML bullet list, unclosed tags (T7497)
 HTML id attribute with Parsoid-like element ids should not be serialized to wikitext
 HTML multiple attributes correction
+HTML nested bullet list, closed tags (T7497)
+HTML nested bullet list, open tags (T7497)
+HTML nested ordered list, closed tags (T7497)
+HTML nested ordered list, open tags (T7497)
+HTML ordered list item with parameters oddity
+HTML ordered list, closed tags (T7497)
+HTML ordered list, unclosed tags (T7497)
 HTML tag with 'unnecessary' entity encoding in attributes
 HTML tag with broken attribute value quoting
 HTML tag with leading space is parsed as text
@@ -234,6 +245,7 @@ Media link with text
 Misnested link nested in span
 Mixing markup for italics and bold
 Multiple newlines after tables are converted to p-br-p tags
+Multiple newlines in between HTML list items don't induce paragraph wrapping
 Multiple spaces in titles should normalize to a single underscore
 Namespace takes precedence over interwiki link (T53680)
 Namespaced link must have a title
@@ -399,6 +411,7 @@ Serialization of purely hash wikilink
 Serialize <a> tags with invalid link targets as plain text
 Serialize interwiki links pointing to the current wiki as plain wiki links (T67869)
 Serialize multi-line indent-pre starting with wikitext syntax
+Serialize wikitext list items as HTML list items when embedded in a HTML list
 Serializer shouldn't blindly user dataParsoid.srcTagName
 Simple category
 Simple category with whitespace as sort key

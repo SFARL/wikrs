@@ -134,7 +134,10 @@ pub(crate) fn tag_kind(name_lower: &str) -> TagKind {
         | "center" | "div" | "blockquote" | "p"
         // Transclusion control whose content shows on the page we render.
         // `includeonly` (which *hides* content) deliberately stays Unsupported.
-        | "noinclude" | "onlyinclude" => TagKind::Transparent,
+        | "noinclude" | "onlyinclude"
+        // HTML list tags: unwrap to text; items stay separated by their source
+        // newlines (we synthesize no bullets, same as wiki lists render).
+        | "ul" | "ol" | "li" | "dl" | "dt" | "dd" => TagKind::Transparent,
         _ => TagKind::Unsupported,
     }
 }
