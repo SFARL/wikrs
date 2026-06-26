@@ -2,7 +2,7 @@
 
 **Fast, honest wikitext extraction and parsing — in Rust.**
 
-> **Status: 🚧 Stage 1 works.** The fast extractor — wikitext → clean text, CLI, ~22× WikiExtractor — is implemented and tested; the structured AST engine is Stage 2. Not yet on crates.io.
+> **Status: 🚧 Stage 2 engine is the default.** wikitext → clean text (or a structured AST) with **honest diagnostics**, ~22× WikiExtractor, CLI, tested. ~40% of MediaWiki parserTests parse with zero diagnostics, climbing. Not yet on crates.io.
 
 ---
 
