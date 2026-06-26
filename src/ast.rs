@@ -32,8 +32,10 @@ pub enum Node<'a> {
     Heading { level: u8, content: Vec<Node<'a>> },
     /// A block of inline content.
     Paragraph(Vec<Node<'a>>),
-    /// A flat list. `ordered` = `#` (numbered) vs `*` (bulleted); each item is
-    /// inline content. Nested and definition (`:`/`;`) lists are not parsed yet.
+    /// A list. `ordered` = `#` (numbered) vs `*`/`:`/`;` (bulleted). Each item is
+    /// inline content, optionally followed by a nested `List` node for deeper
+    /// levels. Definition (`:`/`;`) markers fold into an unordered list (text
+    /// kept, not the term/definition split).
     List {
         ordered: bool,
         items: Vec<Vec<Node<'a>>>,

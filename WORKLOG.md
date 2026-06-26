@@ -372,3 +372,14 @@
 - **Benchmark:** **仅测试代码改动，`src/` 引擎零改动 → 无性能影响。** 今日机器读数 ast 154–160 / strip 116 / parse_wiki_text 303–305 MiB/s，连跑两次全线同向 −2%/run（含我无法影响的外部 crate parse_wiki_text）→ 系机器负载噪声，非回退；引擎吞吐维持既有 **~174 MiB/s**。
 - **Regression?** none（test-only；棘轮本身就是防回退的闸门）。
 - **下一步:** 后续每次扩子集/改 parser，先 `coverage_ratchet` 把关，再 bless 把新通过的 case 登记进 baseline（连同 code 一起提交）。
+
+---
+
+## [2026-06-26] Stage 2：嵌套列表（U-LIST 直方图最大可治项之一）
+
+- **Change:** `parse_list` 重写为深度感知的递归构建：每行的 leading marker run（`*#:;`）= 深度，更深的行嵌进上一条浅项。`build_list(lines, depth)` 递归；定义列表（`:`/`;`）仍折叠为无序（保文本，不拆 term/def）。**不规则嵌套**（块从中间深度起、或跳级）→ `None` → 保持 Unsupported，**不臆造缺失的父级**（D2）。render 加 `render_list_items`：嵌套子列表各占一行（`* a / ** b` → `a\nb`），不再把父项文本和子列表黏在一起。
+- **Coverage:** **39.6% → 40.2%（427→433，+6 net）**；U-LIST **47→40**。ratchet 如期拦下并点名这 6 个新通过的 case（全是 `Nested lists *` 类，无误判），bless 登记进 baseline。
+- **Tests:** TDD —— 先写 `parses_nested_lists`（well-formed 嵌套零诊断 + 结构 + render；混合 marker；不规则嵌套仍 U-LIST），red→green。改两处旧测试（`parses_simple_lists` 删掉"嵌套=Unsupported"旧断言；`flags_unsupported` 把样例块换成 `<div>`/U-HTML，因为嵌套列表已支持）。23 lib 绿、全量绿、clippy 干净、快照不变。
+- **Benchmark（含一处诚实修正）:** 本次改动对 ast 路线 **持平**：`change:` −0.3% [−1.2%, +0.6%]，跨零 = 噪声内。但顺手发现 **README 的 ~174 MiB/s 是过期数**：本次 strip(~117)/parse_wiki_text(~305) 都在各自 idle 基线上（机器没负载），ast 实测稳定在 **~155 MiB/s**（连跑 4 次 153–160）。174 是 tables 提交之前的数——tables 把 `parse_table` 加进了 ast 路线却**只重测了 strip、没重测 ast**，于是我上一条 ratchet 还把 155 误判成"噪声"、继续carry 174。**已改正**：README ast 174→**155**、"~1.5× faster than strip"→"~1.3×"。
+- **Regression?** 本次改动无回退（per-change 持平）。174→155 的差距**早于本次**、追溯到 tables 提交（ast 路线首次被诚实重测才暴露）——正是 skill 警告的"性能悄悄回退被过期数字掩盖"，现已纠正。
+- **现状（直方图）:** W-TEMPLATE(369) / U-HTML(299) / U-TABLE(54) / U-LIST(40，仅剩不规则嵌套) / U-PRE(13)。下一个可治项：U-PRE(13) 或复杂表(54)。

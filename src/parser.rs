@@ -1,5 +1,5 @@
 //! Parser: wikitext → AST + diagnostics, over a deliberately small but honest
-//! subset (paragraphs, headings, bold/italic, links, flat/definition lists,
+//! subset (paragraphs, headings, bold/italic, links, nested & definition lists,
 //! refs/nowiki/comments, inline HTML formatting, preformatted). Inline templates
 //! are dropped with a `W-TEMPLATE` warning (we don't expand them — that would
 //! sacrifice the speed that is the whole point); tables and structural HTML
@@ -114,28 +114,56 @@ fn parse_heading(block: &str) -> Option<Node<'_>> {
     })
 }
 
-/// A block whose every line starts with a single list marker (`*`/`#`/`:`/`;`)
-/// → a flat list (bulleted, numbered, or definition). Nested lists (`**`, `:*`,
-/// …) return `None` and stay Unsupported — we don't preserve nesting yet.
+/// A block whose every line starts with one or more list markers (`*`/`#`/`:`/`;`)
+/// → a (possibly nested) list. Each line's leading run of markers is its depth;
+/// deeper lines nest under the preceding shallower item. Definition markers
+/// (`:`/`;`) fold into an unordered list (text kept, not the term/definition
+/// split). Irregular nesting — a block that starts mid-depth, or jumps a level —
+/// returns `None` and stays Unsupported rather than inventing the missing
+/// parent (D2: we don't fake structure we didn't see).
 fn parse_list(block: &str) -> Option<Node<'_>> {
-    let first = block.bytes().next()?;
-    if !matches!(first, b'*' | b'#' | b':' | b';') {
-        return None;
-    }
-    let mut items = Vec::new();
+    let mut lines: Vec<(&str, &str)> = Vec::new();
     for line in block.lines() {
-        let lb = line.as_bytes();
-        if !matches!(lb.first(), Some(b'*' | b'#' | b':' | b';'))
-            || matches!(lb.get(1), Some(b'*' | b'#' | b':' | b';'))
-        {
+        let prefix_len = line
+            .bytes()
+            .take_while(|b| matches!(b, b'*' | b'#' | b':' | b';'))
+            .count();
+        if prefix_len == 0 {
             return None;
         }
-        items.push(parse_inline(&tokenizer::inline(line[1..].trim_start())));
+        lines.push((&line[..prefix_len], line[prefix_len..].trim_start()));
     }
-    Some(Node::List {
-        ordered: first == b'#',
-        items,
-    })
+    build_list(&lines, 0)
+}
+
+/// Build the list at marker depth `depth` from `(prefix, content)` lines. Every
+/// line is guaranteed `prefix.len() > depth`; the first must be exactly
+/// `depth + 1` deep, else the nesting is irregular and we bail (caller → None).
+fn build_list<'a>(lines: &[(&'a str, &'a str)], depth: usize) -> Option<Node<'a>> {
+    if lines.first()?.0.len() != depth + 1 {
+        return None;
+    }
+    let ordered = lines[0].0.as_bytes()[depth] == b'#';
+    let mut items: Vec<Vec<Node<'a>>> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let (prefix, content) = lines[i];
+        if prefix.len() != depth + 1 {
+            return None;
+        }
+        let mut item = parse_inline(&tokenizer::inline(content));
+        i += 1;
+        // The contiguous deeper-prefixed lines that follow nest under this item.
+        let nested_start = i;
+        while i < lines.len() && lines[i].0.len() > depth + 1 {
+            i += 1;
+        }
+        if i > nested_start {
+            item.push(build_list(&lines[nested_start..i], depth + 1)?);
+        }
+        items.push(item);
+    }
+    Some(Node::List { ordered, items })
 }
 
 /// A block whose every line is leading-space indented → a preformatted block
@@ -411,7 +439,7 @@ fn unsupported_reason(block: &str) -> Option<(&'static str, String)> {
     for line in block.lines() {
         let l = line.trim_start();
         if l.starts_with(['*', '#', ':', ';']) {
-            return Some(("U-LIST", "lists are not parsed yet".into()));
+            return Some(("U-LIST", "irregular list nesting not parsed".into()));
         }
         if l.starts_with('|') || l.starts_with('!') {
             return Some(("U-TABLE", "table markup is not parsed yet".into()));
@@ -503,9 +531,36 @@ mod tests {
         let d = parse("; term\n: definition");
         assert!(d.diagnostics.is_empty(), "diags: {:?}", d.diagnostics);
         assert_eq!(render::plain(&d.nodes), "term\ndefinition");
-        // nested lists stay honestly Unsupported
-        let n = parse("* a\n** nested");
-        assert!(n.diagnostics.iter().any(|d| d.code == "U-LIST"));
+    }
+
+    #[test]
+    fn parses_nested_lists() {
+        // well-formed nesting parses cleanly into a tree — no diagnostics
+        let p = parse("* a\n** b\n** c\n* d");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "a\nb\nc\nd");
+        let Node::List { items, ordered: false } = &p.nodes[0] else {
+            panic!("expected unordered List, got {:?}", p.nodes[0]);
+        };
+        // the first item "a" carries a nested List of two items [b, c]
+        let nested = items[0]
+            .iter()
+            .find_map(|n| match n {
+                Node::List { items, .. } => Some(items),
+                _ => None,
+            })
+            .expect("first item should hold a sublist");
+        assert_eq!(nested.len(), 2);
+        // marker types can change with depth: a numbered list under a bullet
+        let m = parse("* top\n*# one\n*# two");
+        assert!(m.diagnostics.is_empty(), "diags: {:?}", m.diagnostics);
+        // irregular nesting (a depth jump with no parent) stays honestly Unsupported
+        let bad = parse("** orphan\n* root");
+        assert!(
+            bad.diagnostics.iter().any(|d| d.code == "U-LIST"),
+            "diags: {:?}",
+            bad.diagnostics
+        );
     }
 
     #[test]
@@ -566,16 +621,16 @@ mod tests {
 
     #[test]
     fn flags_unsupported_blocks_with_diagnostics() {
-        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n* a\n** nested";
+        let wt = "Intro paragraph.\n\n{{Infobox|x}}\n\n<div>raw block</div>";
         let p = parse(wt);
         let codes: Vec<_> = p.diagnostics.iter().map(|d| d.code).collect();
         assert!(codes.contains(&"W-TEMPLATE"), "codes: {codes:?}"); // template dropped (warning)
-        assert!(codes.contains(&"U-LIST"), "codes: {codes:?}"); // nested list unsupported
+        assert!(codes.contains(&"U-HTML"), "codes: {codes:?}"); // structural HTML unsupported
         assert!(matches!(p.nodes[0], Node::Paragraph(_)));
-        // the nested-list block stays Unsupported, kept verbatim
+        // the structural-HTML block stays Unsupported, kept verbatim
         assert!(p
             .nodes
             .iter()
-            .any(|n| matches!(n, Node::Unsupported(s) if s.contains("nested"))));
+            .any(|n| matches!(n, Node::Unsupported(s) if s.contains("raw"))));
     }
 }

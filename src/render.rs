@@ -26,10 +26,7 @@ fn render_into(nodes: &[Node], out: &mut String) {
                 out.push_str("\n\n");
             }
             Node::List { items, .. } => {
-                for item in items {
-                    render_into(item, out);
-                    out.push('\n');
-                }
+                render_list_items(items, out);
                 out.push('\n');
             }
             Node::Preformatted(lines) => {
@@ -60,6 +57,24 @@ fn render_into(nodes: &[Node], out: &mut String) {
                     out.push_str(&text);
                     out.push_str("\n\n");
                 }
+            }
+        }
+    }
+}
+
+/// Render list items as one text line each, recursing into nested sublists so a
+/// `* a / ** b` tree flattens to `a\nb` (plain text carries no bullet depth).
+fn render_list_items(items: &[Vec<Node>], out: &mut String) {
+    for item in items {
+        for node in item {
+            if !matches!(node, Node::List { .. }) {
+                render_into(std::slice::from_ref(node), out);
+            }
+        }
+        out.push('\n');
+        for node in item {
+            if let Node::List { items, .. } = node {
+                render_list_items(items, out);
             }
         }
     }
