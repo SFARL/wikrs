@@ -183,12 +183,54 @@ fn parse_pre(block: &str) -> Option<Node<'_>> {
     Some(Node::Preformatted(lines))
 }
 
+/// Whether a `<ref>…</ref>` in `block` spans more than one line (or is left
+/// open). Inside a table such a ref's inner `|`-prefixed lines (a multi-line
+/// `{{cite}}`) get misread as table cells, so the table parser bails on it.
+fn has_multiline_ref(block: &str) -> bool {
+    let mut rest = block;
+    while let Some(o) = rest.find("<ref") {
+        let after = &rest[o..];
+        // Distinguish `<ref …` from `<references…`: the char after "ref" must end
+        // the tag name.
+        if !matches!(
+            after.as_bytes().get(4),
+            Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')
+        ) {
+            rest = &after[4..];
+            continue;
+        }
+        let Some(gt) = after.find('>') else {
+            return true; // open tag never closed
+        };
+        if after[..gt].trim_end().ends_with('/') {
+            rest = &after[gt + 1..]; // self-closing, no body
+            continue;
+        }
+        match after[gt + 1..].find("</ref>") {
+            Some(c) => {
+                if after[..gt + 1 + c].contains('\n') {
+                    return true; // body spans lines
+                }
+                rest = &after[gt + 1 + c + "</ref>".len()..];
+            }
+            None => return true, // body never closed
+        }
+    }
+    false
+}
+
 /// A `{| … |}` block → a table (rows × cells of inline content). Cell attributes
 /// are dropped; a table with a multi-line cell (a line that isn't table markup)
 /// returns `None` and stays Unsupported, so we never fake structure we didn't
 /// actually parse.
 fn parse_table(block: &str) -> Option<Node<'_>> {
     if !block.trim_start().starts_with("{|") {
+        return None;
+    }
+    // A <ref>…</ref> spanning lines has its inner `|`-prefixed cite params misread
+    // as table cells — bail so we flag it (U-TABLE) rather than silently leak the
+    // citation markup (D2).
+    if has_multiline_ref(block) {
         return None;
     }
     let mut rows: Vec<Vec<Vec<Node>>> = Vec::new();
@@ -721,6 +763,23 @@ mod tests {
         // a multi-line cell makes the table Unsupported (strip-fallback)
         let c = parse("{|\n| cell line one\nstill the cell\n|}");
         assert!(c.diagnostics.iter().any(|d| d.code == "U-TABLE"));
+    }
+
+    #[test]
+    fn table_with_multiline_ref_is_flagged_not_silently_mangled() {
+        // A <ref> spanning lines inside a cell has its inner `|`-prefixed cite
+        // params misread as table cells. Flag it (U-TABLE) rather than silently
+        // leak the citation markup (D2); lead prose outside the table survives.
+        let wt = "Intro prose.\n\n{|\n|-\n| Smith <ref name=a>{{cite web\n| url = http://e.com\n| title = T}}</ref>\n| 1974\n|}";
+        let p = parse(wt);
+        assert!(
+            p.diagnostics.iter().any(|d| d.code == "U-TABLE"),
+            "expected U-TABLE, got {:?}",
+            p.diagnostics
+        );
+        let text = render::plain(&p.nodes);
+        assert!(text.contains("Intro prose"), "lost lead prose: {text:?}");
+        assert!(!text.contains("url"), "leaked cite markup: {text:?}");
     }
 
     #[test]

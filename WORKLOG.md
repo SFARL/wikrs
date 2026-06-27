@@ -481,3 +481,15 @@
 - **Benchmark:** 无 perf 相关改动，ast 持平 **~159 MiB/s**。
 - **Regression?** none。
 - **下一步:** `<ref>` 静默泄漏（同 Category 的 investigate→fix）；表格 cell 顺序是 metric 精化（非 wikrs bug）。
+
+---
+
+## [2026-06-27] Stage 2：表格多行 ref 防误解析 + 澄清"ref 泄漏"是测试脚手架假象
+
+- **Change:** `parse_table` 遇到**跨行 `<ref>`**（内含多行 `{{cite}}`，其 `|` 续行会被误当表格 cell）就 bail（→ U-TABLE → strip 回退），诚实 flag 而非静默把 citation markup 当 cell 解析（D2）。`has_multiline_ref` 仅在 `{|` 块跑，热路无感。
+- **关键澄清（纠错）:** 之前 dissect 出"残余静默 = `<ref>` 泄漏" **是测试脚手架假象**——我的 python misses 脚本把缓存 wikitext 包成 dump XML（转义 `&`/`<`/`>`），dump 往返腐蚀了 `<ref>`→`ref`、`&nbsp;`→`nbsp;`。直接 `parse()` 原始串（`cargo run --example`）输出 `Intro. End.` **干净无泄漏**；`diff-report` 也是直接 parse 原始 `.wikitext`，所以它的 9.2% 从来不是 ref 泄漏。Category/File 的发现仍真实（那些构造无 `<>&` 可腐蚀），唯独 ref 被脚手架骗了。
+- **真实的 9.2% 静默 structural-diff:** 可靠 dissect（直接 parse + shingle）显示主因是**表格 cell 的 3-gram shingle 顺序假差**——相邻 cell（人名 + 下一 cell 的 `{{age in years}} years` 的 "years"）拼成跨 cell 3-gram，与 Parsoid 渲染顺序不符。同词不同邻接。**是 3-gram metric 在表格上的局限，不是 wikrs bug。**
+- **Tests:** `table_with_multiline_ref_is_flagged_not_silently_mangled`（多行 cite ref → U-TABLE；lead prose 留、cite markup 不泄漏）。新增 1 测试，全量绿、clippy 干净、coverage 528 不变（fixture 无此 pattern）、ratchet 不退。
+- **Benchmark:** ast **~158 MiB/s**，持平。
+- **Regression?** none。
+- **教训:** 别用 dump-包装脚手架测含 `<>&` 的构造——直接 parse 原始串。残余静默是 metric 假差（表格 cell 顺序），要真降它得精化 metric（按行词集 / 句级匹配 / 排除已 flag 的表格），是 diff harness 的事、非 wikrs。
