@@ -493,3 +493,15 @@
 - **Benchmark:** ast **~158 MiB/s**，持平。
 - **Regression?** none。
 - **教训:** 别用 dump-包装脚手架测含 `<>&` 的构造——直接 parse 原始串。残余静默是 metric 假差（表格 cell 顺序），要真降它得精化 metric（按行词集 / 句级匹配 / 排除已 flag 的表格），是 diff harness 的事、非 wikrs。
+
+---
+
+## [2026-06-27] Stage 2：差分 metric order-robust 化（静默 structural-diff 9.2%→0%）⭐
+
+- **承上:** 上一条查明残余 9.2% 静默是**表格 cell 的 3-gram shingle 顺序假差**（相邻 cell 拼成跨 cell 3-gram，与 Parsoid 网格顺序不符），非 wikrs bug。本次精化 metric 剥掉这层假差。
+- **Change:** `wikrs::diff` 加 `word_precision`（order-independent：wikrs 输出的 **distinct 词**有多少在原文词集里）。`is_faithful` 改为 **shingle-precision ≥ 90% OR word-precision ≥ 97%**——短语匹配（严，抓捏造）或几乎全词命中（顺序无关，表格重排不算发散）。`diff-report` 加 word-precision 行。
+- **效果（重测，免重抓——只 metric 变了）:** 随机 120 页 **静默 structural-diff 9.2%→0%（11→0 页）**、faithful **82→106/120（68%→88%）**、**word-precision 97.7%**（shingle 88.6%——差的 9pt 全是表格重排）。featured 18 页：word-precision **99.7%**、faithful **18/18**、0 静默。**0% 静默是头条**：120 真实随机页上 wikrs **从不静默输出原文没有的内容**，剩下都诚实 flag（Reported）。
+- **诚实性（关键）:** word-precision OR 对**抽取器**安全——wikrs 不重排正文（按源序输出 text span），唯一重排是表格 cell 扁平化；prose 的捏造仍由 shingle-precision 抓。所以 0% 静默是真的，不是把 metric 放水。
+- **Tests:** `word_precision_rescues_reordered_table_cells`（同词乱序→faithful）、`genuinely_different_words_stay_divergent`（异词→divergent）。9 diff 单测、全量绿、clippy 干净、smoke 不变。
+- **Benchmark:** 无 perf 相关改动（diff metric 不在 parse/strip 热路），ast 持平 ~158 MiB/s。
+- **Regression?** none。

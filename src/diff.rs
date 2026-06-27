@@ -35,6 +35,12 @@ pub enum Bucket {
 /// distributions are in hand.
 const FAITHFUL_THRESHOLD: f64 = 0.90;
 
+/// Word-precision fallback threshold: if nearly all of wikrs's *distinct words*
+/// are corroborated, the page is faithful even when phrase-shingles differ —
+/// exactly the table-cell case (same words, flattened in a different order than
+/// Parsoid's grid). Separates reordering from genuine fabrication.
+const WORD_FAITHFUL_THRESHOLD: f64 = 0.97;
+
 /// Shingle width in words. Phrase-level: catches "wikrs emitted a phrase not in
 /// the article" while staying robust to paragraph reflow and to wikrs omitting
 /// whole template chunks.
@@ -56,9 +62,13 @@ pub fn classify(wikrs_text: &str, truth_text: &str, has_unsupported: bool) -> Bu
     }
 }
 
-/// Is everything wikrs emitted present in the ground truth? (Precision ≥ threshold.)
+/// Is everything wikrs emitted corroborated by the ground truth? Faithful when the
+/// phrase-shingles match (strict — catches fabrication) OR nearly all distinct
+/// words are present (order-robust — so table-cell reordering isn't a false
+/// divergence).
 pub fn is_faithful(wikrs_text: &str, truth_text: &str) -> bool {
     precision(wikrs_text, truth_text) >= FAITHFUL_THRESHOLD
+        || word_precision(wikrs_text, truth_text) >= WORD_FAITHFUL_THRESHOLD
 }
 
 /// Fraction of wikrs's phrase-shingles that also occur in the ground truth — how
@@ -88,15 +98,33 @@ pub fn coverage(wikrs_text: &str, truth_text: &str) -> f64 {
     hits as f64 / truth.len() as f64
 }
 
-/// Normalize to lowercased alphanumeric words, then join into overlapping
-/// `SHINGLE_K`-word phrases. Text shorter than `SHINGLE_K` words yields a single
-/// shingle of the whole thing, so short pages still compare.
-fn shingles(text: &str) -> HashSet<String> {
-    let words: Vec<String> = text
-        .split(|c: char| !c.is_alphanumeric())
+/// Order-independent precision: the fraction of wikrs's *distinct words* that also
+/// appear in the ground truth. Robust to reordering (table cells flattened in a
+/// different order than Parsoid's grid), so it separates "same words, different
+/// adjacency" from genuinely fabricated content. Empty output is vacuously 1.0.
+pub fn word_precision(wikrs_text: &str, truth_text: &str) -> f64 {
+    let got: HashSet<String> = word_vec(wikrs_text).into_iter().collect();
+    if got.is_empty() {
+        return 1.0;
+    }
+    let truth: HashSet<String> = word_vec(truth_text).into_iter().collect();
+    let hits = got.iter().filter(|w| truth.contains(*w)).count();
+    hits as f64 / got.len() as f64
+}
+
+/// Lowercased alphanumeric words, in order.
+fn word_vec(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
-        .collect();
+        .collect()
+}
+
+/// Join the words into overlapping `SHINGLE_K`-word phrases. Text shorter than
+/// `SHINGLE_K` words yields a single shingle of the whole thing, so short pages
+/// still compare.
+fn shingles(text: &str) -> HashSet<String> {
+    let words = word_vec(text);
     let mut set = HashSet::new();
     if words.is_empty() {
         return set;
@@ -218,5 +246,25 @@ mod tests {
         let r = Report::default();
         assert_eq!(r.total(), 0);
         assert_eq!(r.percentages(), (0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn word_precision_rescues_reordered_table_cells() {
+        // Table-cell flattening reorders words; the content is still corroborated,
+        // so word-precision stays high though the phrase-shingles don't match.
+        let wikrs = "Alice 30 Bob 25";
+        let truth = "Name Age Alice Bob 30 25 and more rows of data here";
+        assert!(precision(wikrs, truth) < 0.90, "shingles should differ");
+        assert!(word_precision(wikrs, truth) > 0.97, "every word is present");
+        assert!(is_faithful(wikrs, truth), "faithful via the word fallback");
+    }
+
+    #[test]
+    fn genuinely_different_words_stay_divergent() {
+        // Different *words*, not just order — a real silent error, not reordering.
+        let wikrs = "Berlin is the capital of Germany";
+        let truth = "Paris is the capital of France and a city";
+        assert!(word_precision(wikrs, truth) < 0.97);
+        assert!(!is_faithful(wikrs, truth));
     }
 }

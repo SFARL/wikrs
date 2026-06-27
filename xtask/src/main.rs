@@ -403,6 +403,7 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
     // is faithful. Page-level bucketing alone hides this on real articles, which
     // almost always contain at least one flagged construct.
     let mut precision_sum = 0.0f64;
+    let mut word_precision_sum = 0.0f64;
     let mut coverage_sum = 0.0f64;
     let mut faithful_text = 0usize;
     let mut empty_output = 0usize;
@@ -424,6 +425,7 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
 
         let prec = diff::precision(&text, &truth);
         precision_sum += prec;
+        word_precision_sum += diff::word_precision(&text, &truth);
         coverage_sum += diff::coverage(&text, &truth);
         if diff::is_faithful(&text, &truth) {
             faithful_text += 1;
@@ -457,10 +459,14 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
         100.0 * precision_sum / n
     );
     println!(
+        "  word precision: {:5.1}%   (order-independent — robust to table-cell reordering)",
+        100.0 * word_precision_sum / n
+    );
+    println!(
         "  mean coverage:  {:5.1}%   (of article prose, how much wikrs emits — rest = templates, by design)",
         100.0 * coverage_sum / n
     );
-    println!("  faithful prose: {faithful_text}/{total} pages (precision >= 90%)");
+    println!("  faithful prose: {faithful_text}/{total} pages (shingle >= 90% OR word >= 97%)");
     println!("  empty output:   {empty_output}/{total} pages");
     per_page.sort_by(|a, b| a.0.total_cmp(&b.0));
     println!(
