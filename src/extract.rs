@@ -15,6 +15,13 @@ mod templates;
 /// (so their inner `[[…]]` / `|` never reach later passes), then links, then
 /// markup, then collapse runs of blank lines.
 pub fn strip(wikitext: &str) -> String {
+    crate::entities::decode(&strip_raw(wikitext)).into_owned()
+}
+
+/// The strip pipeline *without* entity decoding. The AST renderer uses this for
+/// Unsupported blocks and decodes once over its whole output, so the fallback
+/// text isn't decoded twice.
+pub(crate) fn strip_raw(wikitext: &str) -> String {
     let s = comments::strip_comments_refs(wikitext);
     let s = templates::strip_templates_tables(&s);
     let s = links::strip_links(&s);

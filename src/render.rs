@@ -8,7 +8,9 @@ use crate::ast::Node;
 pub fn plain(nodes: &[Node]) -> String {
     let mut out = String::new();
     render_into(nodes, &mut out);
-    out.trim().to_string()
+    // Decode HTML entities once over the whole rendered output — cheaper than
+    // per-Text-node, and both `render_into` and the strip fallback emit raw text.
+    crate::entities::decode(out.trim()).into_owned()
 }
 
 fn render_into(nodes: &[Node], out: &mut String) {
@@ -52,7 +54,7 @@ fn render_into(nodes: &[Node], out: &mut String) {
             // text strip (Stage 1) so its prose isn't lost. The diagnostic still
             // records that we couldn't structure it.
             Node::Unsupported(s) => {
-                let text = crate::extract::strip(s);
+                let text = crate::extract::strip_raw(s);
                 if !text.is_empty() {
                     out.push_str(&text);
                     out.push_str("\n\n");

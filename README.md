@@ -84,7 +84,7 @@ _Last updated: 2026-06-27_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain, **default**) | ~159 MiB/s | Stage 2 engine — **faster than strip**; structured where it can, strip-fallback for Unsupported blocks |
+  | `wikrs` AST path (parse→plain, **default**) | ~152 MiB/s | Stage 2 engine — **faster than strip**; structured where it can, strip-fallback for Unsupported blocks |
   | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~308 MiB/s | community Rust parser → AST (no text out), 2018 |
 
@@ -94,7 +94,7 @@ _Last updated: 2026-06-27_
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
 - **Stage 2 parser coverage** (parserTests, 1077 cases): **49.0%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat, nested & definition lists, preformatted blocks, simple tables, refs/nowiki/comments, inline HTML formatting tags, presentational HTML containers `<div>`/`<center>`/`<blockquote>`/`<p>`, shown transclusion tags `<noinclude>`/`<onlyinclude>`, and HTML lists `<ul>`/`<ol>`/`<li>` unwrapped to their text). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported). Track: `cargo test --test parser_tests stage2_coverage_rate`.
 - **Stage 2 differential — the "three numbers"** (layer 2 of [docs/TESTING.md](docs/TESTING.md); the headline Stage-2 DoD): wikrs's extracted prose vs **Parsoid's** rendered HTML over a fixed, committed sample of real pages. Seed run (**18 featured-class articles**, fetched 2026-06-27):
-    - **~91% mean precision** — of the prose wikrs emits, ~91% is corroborated by the article. A *conservative* floor: the gap is `<math>`/entity/whitespace normalization noise, not errors — the spread is tight with **zero precision outliers** (no page silently mangled).
+    - **~92% mean precision** — of the prose wikrs emits, ~92% is corroborated by the article (**16/18 pages fully faithful**). A *conservative* floor: the residual gap is `<math>` LaTeX and `<ref>` markup wikrs still leaks (entity decoding already fixed `&nbsp;`), not silent garbling — the spread is tight with **zero precision outliers**.
     - **~49% coverage** — wikrs extracts ~half of each article's prose; the rest is **template-expanded content dropped by design** (the speed moat, made measurable).
     - **100% transparently reported** — every real article trips ≥1 out-of-range construct (`{|` table, `<math>`, gallery) and wikrs **flags each** rather than silently skipping. This *is* the honest contrast with WikiExtractor's silent errors — not a failure.
 

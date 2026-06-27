@@ -433,3 +433,14 @@
 - **Benchmark:** ast **~159 MiB/s**，持平（diff 模块不在 parse/strip 热路；本会话两次 bench 158.2 / 159.9 确认噪声内）。xtask 新增 `scraper` 仅 dev 依赖、不进发布物（`publish = false`）。
 - **Regression?** none。
 - **落点 & 复现:** `cargo xtask diff-fetch && cargo xtask diff-report`。样本小且 curated——**方法学证据，不是"N 万页"那一跑**。后续：扩样 + 更干净的 truth 归一化（剥 `<math>`/ref、解实体）能把 91% 这个保守数顶上去；block 分类器 span 感知可降页级 Reported 噪声。
+
+---
+
+## [2026-06-27] Stage 2：HTML 实体解码（差分挖出的抽取质量 bug）
+
+- **差分驱动**：层 2 差分挖出 wikrs 把 markup 漏进纯文本输出——precision 缺口的大头是 `&nbsp;` **没解码**（`9.02&nbsp;AU` 输出成字面词 "nbsp"），外加 `<ref name=>` / `[[File:|thumb|alt=]]` / `<math>` 源码泄漏。本次先收最干净最普遍的一个：实体解码。（投机性的"改 truth 归一化"被证伪——剥 truth 只会**降** precision，真正的洞在 wikrs 输出侧。）
+- **Change:** 新增 `src/entities.rs`（`decode`：命名实体 nbsp/amp/lt/eacute… + 数字 `&#NN;`/`&#xHH;`；未知/畸形留字面，`AT&T` 不动；`&nbsp;` 归一成普通空格）。接两处：`render::plain` 对最终输出**整体解码一次**；`extract::strip` = `decode(strip_raw)`。渲染器 Unsupported 回退改用不解码的 `strip_raw`，避免双重解码。
+- **效果（差分，免重抓——只 wikrs 渲染变了）**：mean precision **91.3% → 91.9%**，faithful **13/18 → 16/18**（Saturn 89.5%→91.3% 等 3 页越过 90% 阈值——nbsp 是普遍因素）。剩余低分页（Prime number/Euler 数学、Mount Everest refs）是 `<math>`/`<ref>` 源码泄漏，列为后续。
+- **Tests:** TDD `entities` 4 单测（命名/数字/未知畸形/无 `&` 借用快路）。37 lib 绿、全量绿、snapshot 不变（样例文章仅 1 个 `&nbsp;`，输出一致）、`coverage_ratchet` 不退（解码在渲染期，不动诊断）。
+- **Benchmark:** ast **~152 MiB/s**。**justified regression −4~5%**（vs 本会话前 ~159）：实体解码对渲染输出多扫一遍。先前 per-Text-node 解码掉到 ~146（−9%），改成**末尾整体解码一次** + `strip_raw` 免双解码后回到 ~152。strip ~117 持平。
+- **Regression?** justified：−4~5% 换正确的实体解码（+3 faithful 页、修掉普遍的 `&nbsp;` 泄漏），值。
