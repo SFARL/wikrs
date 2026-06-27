@@ -29,18 +29,23 @@
 - **落点**：`tests/parser_tests.rs`（用例读取器 + 比对）；fixture 由 `xtask fetch-parser-tests` 拉取，**不入库**。
 - **Stage 映射**：Stage 1 只可能过纯文本类用例；Stage 2 AST 起来后覆盖率才会涨。**把通过率当进度指标。**
 
-### 层 2 — 规模验证：真实 dump 差分测试（声誉证据来源）
+### 层 2 — 规模验证：真实页面差分测试（声誉证据来源）
 
-- **是什么**：同一批真实页面，我们的输出 vs ground truth，做**结构化 DOM diff**。
-- **ground truth 来源**：本地 MediaWiki/Parsoid，或调 Wikipedia REST API（`/page/html/{title}`）拿官方 HTML。
-- **diff 方法**：两边都**归一化**后比结构和文本，**忽略无意义格式差异**（空白、属性顺序、自闭合写法等）。
-- **产出三个数字**（README 头条）：
+**已落地**（2026-06-27）：`cargo xtask diff-fetch` + `diff-report`，核心在 `src/diff.rs`（`wikrs::diff`）。
+
+- **是什么**：一批真实英文维基页面，wikrs 抽出的正文 vs ground truth，做**文本级**差分。
+- **ground truth 来源**：Wikipedia REST API（`/page/html/{title}`）拿 Parsoid 官方 HTML，用 `scraper` 抽可见正文。
+- **为什么文本级而非 DOM**：Stage 2 只渲染 plain text（`render::plain`），没有 `render::html`（那是 Stage 3）。所以现在比的是 **wikrs plain text vs Parsoid HTML 的可见正文**。
+- **diff 方法**：两边归一化成 3-词 shingle 集合，算 **precision**（wikrs 输出的有多少被原文佐证）与 **coverage**（原文正文 wikrs 复现了多少）。
+- **关键设计——precision-led，不惩罚模板省略**：wikrs 按设计丢模板（D4 护城河），其输出是 Parsoid 正文的**子集**。所以头条是 precision（"wikrs 给的对不对"），coverage 单独报（模板省略的缺口，**非失败**）。
+- **页级三桶 vs 真实数据**：`classify` 把每页分 `Faithful`/`Divergent`/`Reported`。但 "Reported" 是页级的——任一越界构造（`{|` 表格 / `<math>` / gallery）就整页标记，而真实 featured 文章必含其一 → **页级桶在真实页面坍缩成 0/0/100**，诚实但无信息量。
+- **真正的头条（fidelity overlay，逐页、与桶无关）**——种子样本（18 篇 featured，2026-06-27）：
   ```
-  X% 完全一致  /  Y% 仅结构差异  /  Z% 主动报错(Unsupported)
+  mean precision ~91%  /  coverage ~49%  /  13-of-18 faithful  /  0 silent outliers
   ```
-  关键是 **Z 不算失败**——主动报错正是和 WikiExtractor"静默出错"的差异点。
-- **落点**：`tests/diff/`（取页面、归一化、diff、出报告的工具）+ `xtask diff-report` 命令。
-- **采样**：固定一个 seed 抽 N 万 ns0 页面，结果可复现。
+  precision 是**保守下限**（~9% 缺口是 `<math>`/实体/分词噪声，不是 garbling——聚类紧、零离群）。页级 0/0/100 作为**透明度层**保留（每页都标记跳过了什么 = 和 WikiExtractor"静默出错"的对比点）。
+- **落点**：`src/diff.rs`（归一化/precision/coverage/classify/Report，零依赖、7 单测）；`xtask diff-fetch`/`diff-report`；`tests/diff_report.rs`（离线集成 smoke，CI 无网络）。
+- **采样**：`tests/diff/titles.txt`（仅页名、入库、可复现）；页面内容 CC-BY-SA 运行时拉、缓存到 gitignore 的 `tests/diff/cache/`，不入库。扩到 N 万随机 ns0（抽样并 pin 结果）是后续。
 
 ### 层 3 — 安全网：fuzzing (`cargo-fuzz`)
 
@@ -81,7 +86,7 @@
 
 | 基线 | 是什么 | 怎么用 | 状态 |
 |------|--------|--------|------|
-| **MediaWiki `parserTests.txt`** | 正确性 oracle（wikitext→期望 HTML），**GPL** | `cargo xtask fetch-parser-tests` 拉取（不入库）→ `cargo test --test parser_tests` | ✅ 1077 例已加载；**Stage 2 零诊断覆盖率 27.1%**（`stage2_coverage_rate`）；逐例 HTML 一致性待 `render::html` |
+| **MediaWiki `parserTests.txt`** | 正确性 oracle（wikitext→期望 HTML），**GPL** | `cargo xtask fetch-parser-tests` 拉取（不入库）→ `cargo test --test parser_tests` | ✅ 1077 例已加载；**Stage 2 零诊断覆盖率 49.0%**（`stage2_coverage_rate`）；逐例 HTML 一致性待 `render::html` |
 | **`parse_wiki_text`** | 最认真的民间 Rust 解析器（0.1.5/2018，停更），速度基线 | `cargo bench --bench compare`（dev-dependency，**不进发布物**） | ✅ 样例 ~319 MiB/s；与 `wikrs_strip`（~118）同组 |
 | **WikiExtractor** | Python 事实标准提取器，速度+行为基线 | `tools/wikiextractor/setup.sh`（venv，**pin Python 3.10**）→ `cargo xtask bench-compare <dump>` | ✅ 端到端 8.3 MB dump：**wikrs ~22× 更快** |
 | **Bliki**（Java，via XWiki） | mature 的 wikitext→HTML 引擎（含**模板展开**），上游已弃 | `tools/bliki/setup.sh`（JDK + coursier 取 jar）→ `cargo xtask bench-bliki` | ✅ 样例 ~**0.4 MB/s**（wikrs strip ~118，**约 300× 差距**；它做的多但慢得多） |
@@ -103,7 +108,8 @@
 | wikrs vs WikiExtractor 端到端 | `cargo xtask bench-compare <dump>` |
 | 装 Bliki（Java 对比基线） | `tools/bliki/setup.sh` |
 | 跑 Bliki 基准 | `cargo xtask bench-bliki` |
-| 生成差分报告（三个数字） | `cargo xtask diff-report --pages 50000 --seed 42` |
+| 取真实页面到差分缓存（gitignore） | `cargo xtask diff-fetch` |
+| 生成差分报告（precision/coverage 三个数字） | `cargo xtask diff-report` |
 | 生成支持范围清单 | `cargo xtask supported` |
 
 > 标 `xtask` 的是自定义任务，Stage 1 / Stage 2 里建。
@@ -115,7 +121,7 @@
 | Stage | 必须有 | 门槛 |
 |-------|--------|------|
 | 1 提取器 | 单元 + 快照 + **vs WikiExtractor 基准** | 输出与 WikiExtractor 行为对齐（逐条对照），且**速度快一个量级**可复现 |
-| 2 AST | 全四层 + 差分报告 | parserTests 覆盖率达标 + 产出"X/Y/Z 三个数字" + fuzz 无崩溃 |
+| 2 AST | 全四层 + 差分报告 | parserTests 覆盖率达标 + 产出 precision/coverage 三个数字（precision-led）+ fuzz 无崩溃 |
 | 3 HTML | 层 1（HTML 比对）+ 快照 | parserTests HTML 比对在支持范围内通过 |
 
 详细 checkpoint 见各 stage 文档。
