@@ -469,3 +469,15 @@
 - **Benchmark:** ast **~159 MiB/s**，change **+3.6%**（vs 实体解码后的 ~152）——丢 File/Category 链接 = 下游更少文本要渲染，正好抵消实体解码的 −4%；本会话净持平 ~159。
 - **Regression?** none（反而回 ~159）。
 - **剩余:** `<math>` LaTeX / `<ref>` 源码泄漏（但触发 U-HTML → Reported，非静默）+ 表格 cell 顺序的 shingle 假差。
+
+---
+
+## [2026-06-27] Stage 2：差分扩样到 N=120（可信声誉证据）
+
+- **Change:** `diff-sample --count 120` pin 120 个随机 ns0 标题（入库 `tests/diff/titles-random.txt`，替换原 25 页 demo），fetch 全部、report。25 页是方法学证明，120 页是证据。无代码改动。
+- **N=120 诚实数字（比 25 页样本略低，符合预期——更大样本更代表）:** mean precision **88.6%**、coverage 32.2%、faithful **82/120（68%）**、empty 1。页级桶：faithful 43.3% / **静默 structural-diff 9.2%（11 页）** / reported 47.5%。
+- **fixes 泛化得到验证:** entity/File/Category 修复通用——120 页上静默 structural-diff 仍只 9.2%（修前 25 页是 40%）。最低分页几乎全是 [R]（体育/统计表格页，cell 顺序 shingle 假差，但**诚实 flagged**），非静默。
+- **dissect 最低静默页（List of ambassadors… 58.5% [D]）→ 残余静默主因是 `<ref>` 泄漏**：misses 满是 "ref name"/"ref ref"（大使列表每条目带 ref）。**纠正上一条 worklog 的假设**——`<ref>` 不止在 Reported 页泄漏；某些 list/table 页**不触发诊断却泄漏**（[D] 静默）。下一个 leak 目标（机制待查：跨 block 多行 ref / table-fallback）。
+- **Benchmark:** 无 perf 相关改动，ast 持平 **~159 MiB/s**。
+- **Regression?** none。
+- **下一步:** `<ref>` 静默泄漏（同 Category 的 investigate→fix）；表格 cell 顺序是 metric 精化（非 wikrs bug）。
