@@ -217,7 +217,10 @@ fn stage2_coverage_rate() {
 /// `(regressed, added)`: names that were in the baseline but no longer pass (a
 /// backward-compat break), and names that newly pass but aren't blessed yet.
 /// `BTreeSet::difference` yields sorted output, so both lists are deterministic.
-fn ratchet_diff(baseline: &BTreeSet<String>, current: &BTreeSet<String>) -> (Vec<String>, Vec<String>) {
+fn ratchet_diff(
+    baseline: &BTreeSet<String>,
+    current: &BTreeSet<String>,
+) -> (Vec<String>, Vec<String>) {
     let regressed = baseline.difference(current).cloned().collect();
     let added = current.difference(baseline).cloned().collect();
     (regressed, added)
@@ -290,7 +293,10 @@ fn coverage_ratchet() {
 
     if std::env::var_os("BLESS_COVERAGE").is_some() {
         write_baseline(&current);
-        eprintln!("blessed {} passing cases -> {COVERAGE_BASELINE}", current.len());
+        eprintln!(
+            "blessed {} passing cases -> {COVERAGE_BASELINE}",
+            current.len()
+        );
         return;
     }
 

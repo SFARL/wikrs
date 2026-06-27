@@ -539,7 +539,11 @@ mod tests {
         let p = parse("* a\n** b\n** c\n* d");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert_eq!(render::plain(&p.nodes), "a\nb\nc\nd");
-        let Node::List { items, ordered: false } = &p.nodes[0] else {
+        let Node::List {
+            items,
+            ordered: false,
+        } = &p.nodes[0]
+        else {
             panic!("expected unordered List, got {:?}", p.nodes[0]);
         };
         // the first item "a" carries a nested List of two items [b, c]
@@ -593,16 +597,27 @@ mod tests {
             "<p>para</p>",
         ] {
             let p = parse(wt);
-            assert!(p.diagnostics.is_empty(), "{wt:?} -> diags {:?}", p.diagnostics);
+            assert!(
+                p.diagnostics.is_empty(),
+                "{wt:?} -> diags {:?}",
+                p.diagnostics
+            );
         }
         assert_eq!(
             render::plain(&parse("<div id=\"rock\">HTML rocks</div>").nodes),
             "HTML rocks"
         );
-        assert_eq!(render::plain(&parse("<center>'''foo'''</center>").nodes), "foo");
+        assert_eq!(
+            render::plain(&parse("<center>'''foo'''</center>").nodes),
+            "foo"
+        );
         // a genuinely structural tag we can't flatten to text stays flagged
         let t = parse("<table><tr><td>x</td></tr></table>");
-        assert!(t.diagnostics.iter().any(|d| d.code == "U-HTML"), "diags: {:?}", t.diagnostics);
+        assert!(
+            t.diagnostics.iter().any(|d| d.code == "U-HTML"),
+            "diags: {:?}",
+            t.diagnostics
+        );
     }
 
     #[test]
