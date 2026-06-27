@@ -45,7 +45,7 @@
   ```
   precision 是**保守下限**（~9% 缺口是 `<math>`/实体/分词噪声，不是 garbling——聚类紧、零离群）。页级 0/0/100 作为**透明度层**保留（每页都标记跳过了什么 = 和 WikiExtractor"静默出错"的对比点）。
 - **落点**：`src/diff.rs`（归一化/precision/coverage/classify/Report，零依赖、7 单测）；`xtask diff-fetch`/`diff-report`；`tests/diff_report.rs`（离线集成 smoke，CI 无网络）。
-- **采样**：`tests/diff/titles.txt`（仅页名、入库、可复现）；页面内容 CC-BY-SA 运行时拉、缓存到 gitignore 的 `tests/diff/cache/`，不入库。扩到 N 万随机 ns0（抽样并 pin 结果）是后续。
+- **采样**：`tests/diff/titles.txt`（18 篇 featured，仅页名、入库、可复现）+ `tests/diff/titles-random.txt`（25 篇随机 ns0，`cargo xtask diff-sample` 抽样并 pin）。页面内容 CC-BY-SA 运行时拉、缓存到 gitignore 的 `tests/diff/cache/`，不入库。**随机样本更诚实**：precision ~82%、**40% 静默 structural-diff**（featured 样本掩盖了——`[[File:|thumb|alt=]]`/`<ref>`/`<math>` markup 在简单页泄漏、无诊断），是下一个正确性目标。
 
 ### 层 3 — 安全网：fuzzing (`cargo-fuzz`)
 
@@ -108,6 +108,7 @@
 | wikrs vs WikiExtractor 端到端 | `cargo xtask bench-compare <dump>` |
 | 装 Bliki（Java 对比基线） | `tools/bliki/setup.sh` |
 | 跑 Bliki 基准 | `cargo xtask bench-bliki` |
+| 抽随机 ns0 标题并 pin（可复现样本） | `cargo xtask diff-sample --count N --out tests/diff/titles-random.txt` |
 | 取真实页面到差分缓存（gitignore） | `cargo xtask diff-fetch` |
 | 生成差分报告（precision/coverage 三个数字） | `cargo xtask diff-report` |
 | 生成支持范围清单 | `cargo xtask supported` |

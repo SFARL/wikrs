@@ -444,3 +444,14 @@
 - **Tests:** TDD `entities` 4 单测（命名/数字/未知畸形/无 `&` 借用快路）。37 lib 绿、全量绿、snapshot 不变（样例文章仅 1 个 `&nbsp;`，输出一致）、`coverage_ratchet` 不退（解码在渲染期，不动诊断）。
 - **Benchmark:** ast **~152 MiB/s**。**justified regression −4~5%**（vs 本会话前 ~159）：实体解码对渲染输出多扫一遍。先前 per-Text-node 解码掉到 ~146（−9%），改成**末尾整体解码一次** + `strip_raw` 免双解码后回到 ~152。strip ~117 持平。
 - **Regression?** justified：−4~5% 换正确的实体解码（+3 faithful 页、修掉普遍的 `&nbsp;` 泄漏），值。
+
+---
+
+## [2026-06-27] Stage 2：差分扩样 `diff-sample`（随机 ns0 → 更诚实的代表性数字）
+
+- **Change:** 新增 `xtask diff-sample`（`list=random&rnnamespace=0&rnfilterredir=nonredirects` 抽 N 个随机 ns0 标题，去重、排序、写带 header 的 pin 文件；随机 API 无 seed → pin 结果保可复现）。xtask 加 `serde_json`（已在 workspace lock，无新传递依赖）。入库 `tests/diff/titles-random.txt`（25 篇随机，仅名字）。
+- **关键发现（代表性 vs curated）:** 25 篇随机 ns0 vs 18 篇 featured：precision **82.2% vs 91.9%**、coverage **36.6% vs 48.9%**、faithful **8/25 vs 16/18**。更关键——**页级桶不再坍缩**：随机页 **40% 静默 structural-diff**（10 页，precision<90% 且**无诊断**）/ 52% reported / 8% faithful。featured 样本（必含越界构造 → 全 reported）**掩盖了静默发散**。根因：`[[File:|thumb|alt=]]` / `<ref>` / `<math>` markup 在简单页泄漏，但**不触发 Unsupported** → 落进 Y（静默）桶。这正是项目要清零的桶——差分再次证明价值。
+- **Tests:** TDD `parse_random_titles` 2 单测（正常 / 坏结构报错）。`cargo test -p xtask` 绿、clippy（`--workspace -D warnings`）干净、全量绿。
+- **Benchmark:** 无 perf 相关改动（纯 xtask），ast 持平 **~152 MiB/s**。
+- **Regression?** none。
+- **下一步（差分点名的真账）:** File/thumb/ref/math 源码泄漏是**静默 structural-diff** 的主因，且简单页无诊断——比覆盖率更该追的正确性工作。
