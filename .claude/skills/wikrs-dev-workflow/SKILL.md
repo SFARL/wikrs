@@ -15,7 +15,7 @@ For each unit of work:
 
 1. **Write the failing unit test first.** Describe the behavior you want as a test that fails today. This is TDD — see the broader `superpowers:test-driven-development` skill if you want the full discipline. The point: a change with no test that would fail without it isn't verifiable, so it isn't done.
 2. **Make it pass** with the simplest code that could work.
-3. **Run the whole suite:** `cargo test --all-features`. Everything green — not just your new test. A change that fixes one thing and reddens another isn't done.
+3. **Pass every CI gate locally — in CI's order:** `cargo fmt --all` (CI runs `cargo fmt --all -- --check` as its **first** gate and fails the build on any drift — easy to forget because the code still compiles and tests pass; run `fmt` *before* committing, not after CI tells you), then `cargo clippy --all-targets --all-features` (warnings are denied in CI), then `cargo test --all-features` (everything green — not just your new test). A change that's mis-formatted, trips clippy, or reddens another test isn't done.
 4. **Run the benchmark:** `scripts/bench.sh` (wraps `cargo bench --bench compare`).
 5. **Check the done-gate** (below).
 6. **Record it:** append a `WORKLOG.md` entry and refresh the README results table.
@@ -25,7 +25,7 @@ For each unit of work:
 
 A change is done only when **both** hold:
 
-- ✅ **Tests pass.** `cargo test --all-features` is green, and the new behavior is covered by a test that would fail without your change.
+- ✅ **All three CI gates are clean locally:** `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features`, and `cargo test --all-features` — CI runs all three and fails on any one (fmt first). The new behavior is covered by a test that would fail without your change.
 - ✅ **The benchmark did not *silently* regress.** Default expectation: improve or hold (within noise).
 
 ### The coverage ratchet — don't let it trap you
