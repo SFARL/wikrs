@@ -55,8 +55,8 @@ fn find_external(s: &str) -> Option<usize> {
         .find(|&i| b[i] == b'[' && b.get(i + 1) != Some(&b'[') && s[i + 1..].starts_with("http"))
 }
 
-/// Inner text of `[[ … ]]`. Drops `File:`/`Image:`; otherwise keeps the text
-/// after the last `|`, or the target itself if there is no `|`.
+/// Inner text of `[[ … ]]`. Drops `File:`/`Image:`/`Category:` (non-prose);
+/// otherwise keeps the text after the last `|`, or the target if there's no `|`.
 fn internal_text(inner: &str) -> String {
     let target = inner.split('|').next().unwrap_or("");
     let ns = target
@@ -65,7 +65,7 @@ fn internal_text(inner: &str) -> String {
         .unwrap_or("")
         .trim()
         .to_ascii_lowercase();
-    if ns == "file" || ns == "image" {
+    if matches!(ns.as_str(), "file" | "image" | "category") {
         return String::new();
     }
     inner.rsplit('|').next().unwrap_or(inner).to_string()
@@ -93,5 +93,6 @@ mod tests {
         assert_eq!(strip_links("x [https://a.com label] y"), "x label y");
         assert_eq!(strip_links("x [https://a.com] y"), "x  y"); // bare url dropped
         assert_eq!(strip_links("a [[File:p.jpg|thumb|cap]] b"), "a  b"); // file dropped
+        assert_eq!(strip_links("p [[Category:Living people]] q"), "p  q"); // category dropped
     }
 }

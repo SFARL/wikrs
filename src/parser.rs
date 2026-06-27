@@ -335,6 +335,12 @@ fn make_link<'a>(inner: &[Inline<'a>]) -> Node<'a> {
     match inner.iter().position(|t| matches!(t, Inline::Pipe)) {
         Some(p) => {
             let target = concat_text(&inner[..p]);
+            // File:/Image: media and Category: tags render as non-prose — drop
+            // them entirely so their params/names never leak into the text.
+            // Mirrors the Stage 1 stripper's `internal_text`.
+            if is_nonprose_target(&target) {
+                return Node::Text(Cow::Borrowed(""));
+            }
             let label = parse_inline(&inner[p + 1..]);
             let label = if label.is_empty() {
                 vec![Node::Text(target.clone())]
@@ -345,12 +351,26 @@ fn make_link<'a>(inner: &[Inline<'a>]) -> Node<'a> {
         }
         None => {
             let target = concat_text(inner);
+            if is_nonprose_target(&target) {
+                return Node::Text(Cow::Borrowed(""));
+            }
             Node::Link {
                 label: vec![Node::Text(target.clone())],
                 target,
             }
         }
     }
+}
+
+/// Whether a `[[…]]` target renders as non-prose and should be dropped entirely:
+/// `File:`/`Image:` media and `Category:` membership tags (neither appears in
+/// Parsoid's body text). A leading-colon link (`[[:Category:…]]`) has an empty
+/// first segment here, so it stays a normal visible link.
+fn is_nonprose_target(target: &str) -> bool {
+    let ns = target.split(':').next().unwrap_or("").trim();
+    ns.eq_ignore_ascii_case("file")
+        || ns.eq_ignore_ascii_case("image")
+        || ns.eq_ignore_ascii_case("category")
 }
 
 /// Build a `Link` from an external link `[url label]` (URL = up to the first
@@ -519,6 +539,38 @@ mod tests {
         let p = parse("See [https://nasa.gov NASA] and [https://x.org].");
         assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
         assert_eq!(render::plain(&p.nodes), "See NASA and .");
+    }
+
+    #[test]
+    fn drops_nonprose_links() {
+        // File/Image media and Category tags render as non-prose — their params
+        // and names must not leak into the text. Mirrors the Stage 1 stripper.
+        let p = parse("a [[File:Pic.jpg|thumb|alt=x|cap]] b");
+        assert!(p.diagnostics.is_empty(), "diags: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "a  b");
+        assert_eq!(
+            render::plain(&parse("[[Image:Y.png|right|200px]]").nodes),
+            ""
+        );
+        // Category membership tags are invisible in body prose — dropped.
+        assert_eq!(
+            render::plain(&parse("[[Category:Living people]]").nodes),
+            ""
+        );
+        assert_eq!(
+            render::plain(&parse("x [[Category:1959 births]] y").nodes),
+            "x  y"
+        );
+        // a normal internal link still keeps its anchor text; a leading-colon
+        // link to a category page IS visible prose.
+        assert_eq!(
+            render::plain(&parse("see [[Earth|our planet]]").nodes),
+            "see our planet"
+        );
+        assert_eq!(
+            render::plain(&parse("[[:Category:Physics|physics]]").nodes),
+            "physics"
+        );
     }
 
     #[test]

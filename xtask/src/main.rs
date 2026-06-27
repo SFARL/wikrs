@@ -370,7 +370,7 @@ fn diff_fetch(titles_path: &Path, out_dir: &Path, limit: Option<usize>) -> anyho
 /// numbers (+ the separate coverage figure, + the divergent list to inspect).
 fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
     use wikrs::diag::Severity;
-    use wikrs::diff::{self, Report};
+    use wikrs::diff::{self, Bucket, Report};
 
     if !cache_dir.exists() {
         bail!(
@@ -396,7 +396,7 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
     }
 
     let mut report = Report::default();
-    let mut per_page: Vec<(f64, String)> = Vec::new();
+    let mut per_page: Vec<(f64, Bucket, String)> = Vec::new();
     // Fidelity overlay, measured on *every* page independent of the buckets. Even
     // a page that is `Reported` (it flagged some out-of-range construct) still has
     // prose wikrs extracted, and the question that matters is whether *that* prose
@@ -419,7 +419,8 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
             .iter()
             .any(|d| d.severity == Severity::Unsupported);
 
-        report.record(diff::classify(&text, &truth, has_unsupported));
+        let bucket = diff::classify(&text, &truth, has_unsupported);
+        report.record(bucket);
 
         let prec = diff::precision(&text, &truth);
         precision_sum += prec;
@@ -430,7 +431,7 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
         if text.split_whitespace().next().is_none() {
             empty_output += 1;
         }
-        per_page.push((prec, slug.clone()));
+        per_page.push((prec, bucket, slug.clone()));
     }
 
     let (x, y, z) = report.percentages();
@@ -465,8 +466,13 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
     println!(
         "\nlowest-precision pages (inspect first — real wikrs bug, or just dropped templates?):"
     );
-    for (prec, slug) in per_page.iter().take(show) {
-        println!("  {:5.1}%  {slug}", 100.0 * prec);
+    for (prec, bucket, slug) in per_page.iter().take(show) {
+        let tag = match bucket {
+            Bucket::Faithful => 'F',
+            Bucket::Divergent => 'D', // silent — precision low, no diagnostic
+            Bucket::Reported => 'R',  // honestly flagged
+        };
+        println!("  {:5.1}%  [{tag}]  {slug}", 100.0 * prec);
     }
     Ok(())
 }

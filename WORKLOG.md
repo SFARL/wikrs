@@ -455,3 +455,17 @@
 - **Benchmark:** 无 perf 相关改动（纯 xtask），ast 持平 **~152 MiB/s**。
 - **Regression?** none。
 - **下一步（差分点名的真账）:** File/thumb/ref/math 源码泄漏是**静默 structural-diff** 的主因，且简单页无诊断——比覆盖率更该追的正确性工作。
+
+---
+
+## [2026-06-27] Stage 2：堵 File/Category 链接泄漏（静默 structural-diff 40%→4%）
+
+- **差分点名 → 修**：随机样本 40% **静默** structural-diff（precision<90% 且无诊断）逼出真账。
+- **先试 File（猜）**：`make_link` 把 `[[File:X|thumb|alt=Y]]` 的参数当 label 文本渲染（leak `thumbalt=Y`）。修：File:/Image: 整条丢弃（镜像 Stage-1 `internal_text`）。**但随机样本几乎没动**（82.2%→82.3%，silent 仍 40%）——别猜，要看 misses。
+- **dissect 最低静默页（Lázaro Mazón Alonso 53.7% [D]）→ 真凶是 Category**：misses 几乎全是 `[[Category:…]]` 名字（"category living people"、"1959 births category"…）。wikrs 把 Category 当普通链接渲染出名字，但 Parsoid 放底部分类栏、不进正文 → 短 stub 上 Category 占输出一大半 → precision 崩；长 featured 页正文多、占比小，所以被掩盖。
+- **Change:** `is_media_target`→`is_nonprose_target`，并入 `category`（File/Image/Category 都丢；`[[:Category:…]]` 前导冒号=空首段，自然保留为可见链接）。同步 Stage-1 `links.rs`。无分配版（`eq_ignore_ascii_case`，热路每链接一次）。新增 `diff-report` 桶标签（F/D/R）定位静默页。
+- **效果:** 随机 25 页：precision **82.2%→92.3%**、**静默 structural-diff 40%→4%（10→1 页）**、faithful **8→20/25**。featured 18 页：precision **91.9%→93.2%**、faithful 16→17/18。
+- **Tests:** `drops_nonprose_links`（File/Image/Category 丢、`[[:Category:]]` 留、普通链接留）+ Stage-1 category 断言。38 lib 绿、全量绿、clippy 干净、snapshot 不变、`coverage_ratchet` 不退（丢链接不改诊断）。
+- **Benchmark:** ast **~159 MiB/s**，change **+3.6%**（vs 实体解码后的 ~152）——丢 File/Category 链接 = 下游更少文本要渲染，正好抵消实体解码的 −4%；本会话净持平 ~159。
+- **Regression?** none（反而回 ~159）。
+- **剩余:** `<math>` LaTeX / `<ref>` 源码泄漏（但触发 U-HTML → Reported，非静默）+ 表格 cell 顺序的 shingle 假差。
