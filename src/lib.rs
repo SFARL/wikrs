@@ -8,6 +8,7 @@
 
 pub mod ast;
 pub mod diag;
+pub mod diff;
 pub mod dump;
 pub mod extract;
 pub mod output;

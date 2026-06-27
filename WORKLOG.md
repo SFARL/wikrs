@@ -420,3 +420,16 @@
 - **Benchmark:** ast **~159 MiB/s**，持平（又是纯 match 分支，零成本）。
 - **Regression?** none。
 - **本会话 U-HTML 战果:** 透明容器(div…) + 转写标签(noinclude…) + HTML 列表，U-HTML **299→139**，coverage **40.2%→49.0%**。**干净 chipping 到此为止**：剩下的 U-HTML(139) 是 HTML 表格/test 扩展标签/includeonly + 模板边角，U-TABLE/U-LIST/U-PRE 是误报+fostering——都不是干净可拿的。**~49% 是不展开模板前提下的诚实天花板。** 下一步应换方向：差分"三个数字"（声誉证据）或 block 分类器 span 感知。
+
+---
+
+## [2026-06-27] Stage 2：层 2 差分谐("三个数字")— wikrs 抽文 vs Parsoid，真实页面 ⭐
+
+- **Change:** 新增 `wikrs::diff` 核心模块（零依赖：分词 shingle 归一化、`precision`/`coverage`、`classify`→三桶 `Faithful`/`Divergent`/`Reported`、`Report` 聚合）+ xtask 两命令：`diff-fetch`（curl 取 wikitext + Parsoid HTML，scraper 抽可见正文，缓存到 gitignore 的 `tests/diff/cache/`）、`diff-report`（离线，逐页 `parse`→`render::plain`→`classify`，出三个数字 + fidelity overlay）。标题列表 `tests/diff/titles.txt`（仅名字、可复现、入库；页面内容 CC-BY-SA 运行时拉取、不入库——同 parserTests 纪律）。
+- **真实数据发现（关键）:** 18 篇 featured 文章上，**页级三桶坍缩成 0/0/100**——"Reported" 是页级的，任一越界构造（`{|` 表格 / `<math>` / gallery）就整页标记，而真实 featured 文章必含其一。页级桶**诚实但无信息量**。
+- **真正的证据是 fidelity overlay（逐页、与桶无关）:** **mean precision 91.3% / coverage 48.7% / 13-of-18 faithful / 0 empty / 无 precision 离群**。precision 是**保守下限**——~9% 缺口是 `<math>`/实体/分词边界噪声，不是 wikrs garbling（聚类紧、零离群 = 没有静默重塑）。coverage ~49% = 模板展开内容**按设计丢弃**（D4 护城河可视化）。最低几页（Prime number 96 个 `<math>`、Euler 16 个）正是数学页，佐证缺口是归一化噪声而非错误。
+- **决策（用户）:** README 头条用 **precision-led**（91/49/faithful/0-silent），页级 0/0/100 桶作为**透明度/诚实层**呈现（每页都标记越界构造 = 和 WikiExtractor 静默出错的对比点）。不改 `classify` 语义——`diff-report` 已同时打印两视图。
+- **Tests:** TDD `wikrs::diff` 7 单测（red→green：三桶优先级、precision 子集/空=1.0、coverage 低不致 divergent、`Report` 百分比和=100）。离线集成 smoke `tests/diff_report.rs` 3 例（真 wikitext 走 parse→render→classify：clean prose=Faithful、HTML 表格=Reported、捏造句=Divergent），CI 无需网络。33 lib 绿、全量绿、clippy（`--workspace -D warnings`，含 xtask + scraper）干净、`coverage_ratchet` 不退。
+- **Benchmark:** ast **~159 MiB/s**，持平（diff 模块不在 parse/strip 热路；本会话两次 bench 158.2 / 159.9 确认噪声内）。xtask 新增 `scraper` 仅 dev 依赖、不进发布物（`publish = false`）。
+- **Regression?** none。
+- **落点 & 复现:** `cargo xtask diff-fetch && cargo xtask diff-report`。样本小且 curated——**方法学证据，不是"N 万页"那一跑**。后续：扩样 + 更干净的 truth 归一化（剥 `<math>`/ref、解实体）能把 91% 这个保守数顶上去；block 分类器 span 感知可降页级 Reported 噪声。

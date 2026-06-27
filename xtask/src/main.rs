@@ -14,6 +14,15 @@ use clap::{Parser, Subcommand};
 
 const PARSER_TESTS_DEST: &str = "tests/fixtures/parserTests.txt";
 const SAMPLE_ARTICLE: &str = "tests/fixtures/sample_article.wikitext";
+const DIFF_TITLES: &str = "tests/diff/titles.txt";
+const DIFF_CACHE: &str = "tests/diff/cache";
+/// REST Parsoid HTML endpoint (ground truth) — percent-encoded title appended.
+const REST_HTML: &str = "https://en.wikipedia.org/api/rest_v1/page/html/";
+/// Raw-wikitext endpoint (wikrs input); title goes in the `title` query param.
+const RAW_WIKITEXT: &str = "https://en.wikipedia.org/w/index.php";
+/// Wikipedia asks every client to send a descriptive User-Agent.
+const USER_AGENT: &str =
+    "wikrs-dev-diff/0.1 (https://github.com/SFARL/wikrs; differential harness)";
 
 /// wikrs developer tasks.
 #[derive(Parser)]
@@ -60,6 +69,29 @@ enum Cmd {
         #[arg(long, default_value_t = 3000)]
         iters: usize,
     },
+    /// Fetch real pages (wikitext + Parsoid HTML ground truth) into the
+    /// gitignored diff cache. Needs network; run before `diff-report`.
+    DiffFetch {
+        /// Newline-delimited page titles (names only; `#` comments allowed).
+        #[arg(long, default_value = DIFF_TITLES)]
+        titles: PathBuf,
+        /// Cache directory (gitignored).
+        #[arg(long, default_value = DIFF_CACHE)]
+        out: PathBuf,
+        /// Only fetch the first N titles.
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Diff cached pages (wikrs render vs ground-truth prose) into the three
+    /// headline numbers. Offline; reads what `diff-fetch` cached.
+    DiffReport {
+        /// Cache directory written by `diff-fetch`.
+        #[arg(long, default_value = DIFF_CACHE)]
+        cache: PathBuf,
+        /// Print up to this many lowest-precision pages (inspect these first).
+        #[arg(long, default_value_t = 10)]
+        show: usize,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -71,6 +103,8 @@ fn main() -> anyhow::Result<()> {
             wikiextractor_python,
         } => bench_compare(&dump, &wikiextractor_python),
         Cmd::BenchBliki { wikitext, iters } => bench_bliki(&wikitext, iters),
+        Cmd::DiffFetch { titles, out, limit } => diff_fetch(&titles, &out, limit),
+        Cmd::DiffReport { cache, show } => diff_report(&cache, show),
     }
 }
 
@@ -203,6 +237,225 @@ fn bench_bliki(wikitext: &Path, iters: usize) -> anyhow::Result<()> {
         .context("running java (is a JDK installed?)")?;
     if !status.success() {
         bail!("Bliki harness exited with {status}");
+    }
+    Ok(())
+}
+
+/// Percent-encode a page title for a URL (query value or path segment).
+/// Conservative: only RFC-3986 unreserved characters pass through.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Filesystem-safe stem for a title's cache files (non-alphanumerics -> `_`).
+/// Readable by design; a curated, distinct title list makes collisions a
+/// non-issue.
+fn slugify(title: &str) -> String {
+    title
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
+/// GET `url` as text via curl (same dependency-light pattern as
+/// `fetch-parser-tests`), with the polite User-Agent Wikipedia expects.
+fn curl_text(url: &str) -> anyhow::Result<String> {
+    let out = Command::new("curl")
+        .args([
+            "-fsSL",
+            "--retry",
+            "2",
+            "--max-time",
+            "30",
+            "-A",
+            USER_AGENT,
+            url,
+        ])
+        .output()
+        .context("running curl (is it installed?)")?;
+    if !out.status.success() {
+        bail!(
+            "curl failed ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    String::from_utf8(out.stdout).context("response was not UTF-8")
+}
+
+/// Extract visible prose text from Parsoid HTML. Selecting a *superset* of
+/// prose-bearing elements is deliberately safe for the precision metric: extra
+/// truth text can only make wikrs's output easier to corroborate, and the
+/// shingles are de-duplicated downstream.
+fn html_to_text(html: &str) -> String {
+    use scraper::{Html, Selector};
+    let doc = Html::parse_document(html);
+    let sel = Selector::parse(
+        "p, h1, h2, h3, h4, h5, h6, li, dd, dt, caption, th, td, blockquote, figcaption",
+    )
+    .expect("static prose selector");
+    let mut out = String::new();
+    for el in doc.select(&sel) {
+        for chunk in el.text() {
+            out.push_str(chunk);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// `diff-fetch`: pull wikitext + Parsoid HTML for each title into the cache.
+fn diff_fetch(titles_path: &Path, out_dir: &Path, limit: Option<usize>) -> anyhow::Result<()> {
+    let list = std::fs::read_to_string(titles_path)
+        .with_context(|| format!("read titles {}", titles_path.display()))?;
+    let mut titles: Vec<&str> = list
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    if let Some(n) = limit {
+        titles.truncate(n);
+    }
+    std::fs::create_dir_all(out_dir).context("create diff cache dir")?;
+    let total = titles.len();
+    eprintln!("fetching {total} page(s) -> {}", out_dir.display());
+
+    let mut cached = 0usize;
+    for (i, title) in titles.iter().enumerate() {
+        let enc = percent_encode(title);
+        let fetch = || -> anyhow::Result<(String, String)> {
+            let wikitext = curl_text(&format!("{RAW_WIKITEXT}?title={enc}&action=raw"))?;
+            let html = curl_text(&format!("{REST_HTML}{enc}"))?;
+            Ok((wikitext, html))
+        };
+        match fetch() {
+            Ok((wikitext, html)) => {
+                let slug = slugify(title);
+                std::fs::write(out_dir.join(format!("{slug}.wikitext")), wikitext)?;
+                std::fs::write(
+                    out_dir.join(format!("{slug}.truth.txt")),
+                    html_to_text(&html),
+                )?;
+                cached += 1;
+                eprintln!("  [{}/{total}] {title}", i + 1);
+            }
+            Err(e) => eprintln!("  [{}/{total}] SKIP {title}: {e}", i + 1),
+        }
+    }
+    println!("cached {cached}/{total} page(s) in {}", out_dir.display());
+    Ok(())
+}
+
+/// `diff-report`: classify every cached page and print the three headline
+/// numbers (+ the separate coverage figure, + the divergent list to inspect).
+fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
+    use wikrs::diag::Severity;
+    use wikrs::diff::{self, Report};
+
+    if !cache_dir.exists() {
+        bail!(
+            "cache {} not found — run `cargo xtask diff-fetch` first",
+            cache_dir.display()
+        );
+    }
+    let mut slugs: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(cache_dir).context("read cache dir")? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("wikitext") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                slugs.push(stem.to_owned());
+            }
+        }
+    }
+    slugs.sort();
+    if slugs.is_empty() {
+        bail!(
+            "no cached pages in {} — run `cargo xtask diff-fetch`",
+            cache_dir.display()
+        );
+    }
+
+    let mut report = Report::default();
+    let mut per_page: Vec<(f64, String)> = Vec::new();
+    // Fidelity overlay, measured on *every* page independent of the buckets. Even
+    // a page that is `Reported` (it flagged some out-of-range construct) still has
+    // prose wikrs extracted, and the question that matters is whether *that* prose
+    // is faithful. Page-level bucketing alone hides this on real articles, which
+    // almost always contain at least one flagged construct.
+    let mut precision_sum = 0.0f64;
+    let mut coverage_sum = 0.0f64;
+    let mut faithful_text = 0usize;
+    let mut empty_output = 0usize;
+
+    for slug in &slugs {
+        let wikitext = std::fs::read_to_string(cache_dir.join(format!("{slug}.wikitext")))?;
+        let truth = std::fs::read_to_string(cache_dir.join(format!("{slug}.truth.txt")))
+            .with_context(|| format!("missing truth.txt for {slug}"))?;
+
+        let parsed = wikrs::parser::parse(&wikitext);
+        let text = wikrs::render::plain(&parsed.nodes);
+        let has_unsupported = parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Unsupported);
+
+        report.record(diff::classify(&text, &truth, has_unsupported));
+
+        let prec = diff::precision(&text, &truth);
+        precision_sum += prec;
+        coverage_sum += diff::coverage(&text, &truth);
+        if diff::is_faithful(&text, &truth) {
+            faithful_text += 1;
+        }
+        if text.split_whitespace().next().is_none() {
+            empty_output += 1;
+        }
+        per_page.push((prec, slug.clone()));
+    }
+
+    let (x, y, z) = report.percentages();
+    let total = report.total();
+    let n = total as f64;
+    println!("\nwikrs differential — {total} page(s)\n");
+    println!("page buckets (a page is Reported if it flags ANY unsupported construct):");
+    println!(
+        "  {x:5.1}%  identical (faithful, zero diagnostics)   [{}]",
+        report.faithful
+    );
+    println!(
+        "  {y:5.1}%  structural diff (silent)                 [{}]",
+        report.divergent
+    );
+    println!(
+        "  {z:5.1}%  reported (>=1 unsupported construct)     [{}]",
+        report.reported
+    );
+    println!("\nextracted-prose fidelity (every page, independent of the buckets):");
+    println!(
+        "  mean precision: {:5.1}%   (of what wikrs emits, how much the article corroborates)",
+        100.0 * precision_sum / n
+    );
+    println!(
+        "  mean coverage:  {:5.1}%   (of article prose, how much wikrs emits — rest = templates, by design)",
+        100.0 * coverage_sum / n
+    );
+    println!("  faithful prose: {faithful_text}/{total} pages (precision >= 90%)");
+    println!("  empty output:   {empty_output}/{total} pages");
+    per_page.sort_by(|a, b| a.0.total_cmp(&b.0));
+    println!(
+        "\nlowest-precision pages (inspect first — real wikrs bug, or just dropped templates?):"
+    );
+    for (prec, slug) in per_page.iter().take(show) {
+        println!("  {:5.1}%  {slug}", 100.0 * prec);
     }
     Ok(())
 }

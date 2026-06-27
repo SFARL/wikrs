@@ -15,6 +15,10 @@
 # parserTests.txt is GPL — fetched at test time (cargo xtask fetch-parser-tests), never committed
 /tests/fixtures/parserTests.txt
 
+# Differential harness cache — real Wikipedia pages (CC-BY-SA) fetched by
+# `cargo xtask diff-fetch`; never committed. Only the title list is committed.
+/tests/diff/cache/
+
 # WikiExtractor Python venv (comparison baseline)
 .venv/
 

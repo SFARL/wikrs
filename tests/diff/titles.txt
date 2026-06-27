@@ -1,0 +1,28 @@
+# wikrs differential seed sample — page TITLES only (names, not content).
+#
+# Like tests/coverage_baseline.txt, this is a curated, derived list, safe to
+# commit. The page CONTENT (CC-BY-SA) is fetched at run time by
+#   cargo xtask diff-fetch
+# into tests/diff/cache/ (gitignored), never committed. A fixed list => a
+# reproducible sample; re-fetching refreshes it to the pages' current revisions.
+#
+# Chosen to be prose-rich and template-heavy (infoboxes, citations), so they
+# exercise wikrs's by-design template omission. `#` lines and blanks are skipped.
+Helium
+Photosynthesis
+Alan Turing
+France
+Tokyo
+Cat
+Prime number
+Jupiter
+Coffee
+Volcano
+Electron
+Great Barrier Reef
+Leonhard Euler
+Pacific Ocean
+Mount Everest
+Chess
+Tea
+Saturn

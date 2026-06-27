@@ -70,13 +70,13 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 | **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~49% coverage; **now the CLI default**) |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
-The headline metric we're building toward: **"X% structurally identical to Parsoid on N random Wikipedia pages"**, plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
+The headline metric: a **precision/coverage differential vs Parsoid** on real pages (now landing — see [Benchmarks](#benchmarks--test-status)), plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
 
 ## Benchmarks & test status
 
 > Kept current on every change via the project's `wikrs-dev-workflow` skill. Methodology: [docs/TESTING.md](docs/TESTING.md).
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-06-27_
 
 - **Tests:** green — `cargo test --all-features`
 - **⚡ vs WikiExtractor** (end-to-end, 8.3 MB synthetic dump = 5000 articles, Apple Silicon): wikrs **~22× faster** — ~0.18 s / 47 MB/s vs WikiExtractor ~3.9 s / 2.1 MB/s. Reproduce: `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml`. *(Synthetic dump = the sample article repeated; real heterogeneous dumps will differ — the order of magnitude is the point.)*
@@ -84,7 +84,7 @@ _Last updated: 2026-06-26_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain, **default**) | ~155 MiB/s | Stage 2 engine — **faster than strip**; structured where it can, strip-fallback for Unsupported blocks |
+  | `wikrs` AST path (parse→plain, **default**) | ~159 MiB/s | Stage 2 engine — **faster than strip**; structured where it can, strip-fallback for Unsupported blocks |
   | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~308 MiB/s | community Rust parser → AST (no text out), 2018 |
 
@@ -93,6 +93,12 @@ _Last updated: 2026-06-26_
   Run it yourself: `scripts/bench.sh`.
 - **Stage 1 conversion rate** (parserTests, 1077 real cases): **98.1%** of pages strip to output with no residual bracket markup (`{{`, `[[`, `{|`). This is a *leniency floor* — it catches markup that **leaked**, not correctness; true correctness-vs-Parsoid is Stage 2. Check it with `wikrs --stats` or `cargo test --test parser_tests stage1_conversion_rate`.
 - **Stage 2 parser coverage** (parserTests, 1077 cases): **49.0%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat, nested & definition lists, preformatted blocks, simple tables, refs/nowiki/comments, inline HTML formatting tags, presentational HTML containers `<div>`/`<center>`/`<blockquote>`/`<p>`, shown transclusion tags `<noinclude>`/`<onlyinclude>`, and HTML lists `<ul>`/`<ol>`/`<li>` unwrapped to their text). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported). Track: `cargo test --test parser_tests stage2_coverage_rate`.
+- **Stage 2 differential — the "three numbers"** (layer 2 of [docs/TESTING.md](docs/TESTING.md); the headline Stage-2 DoD): wikrs's extracted prose vs **Parsoid's** rendered HTML over a fixed, committed sample of real pages. Seed run (**18 featured-class articles**, fetched 2026-06-27):
+    - **~91% mean precision** — of the prose wikrs emits, ~91% is corroborated by the article. A *conservative* floor: the gap is `<math>`/entity/whitespace normalization noise, not errors — the spread is tight with **zero precision outliers** (no page silently mangled).
+    - **~49% coverage** — wikrs extracts ~half of each article's prose; the rest is **template-expanded content dropped by design** (the speed moat, made measurable).
+    - **100% transparently reported** — every real article trips ≥1 out-of-range construct (`{|` table, `<math>`, gallery) and wikrs **flags each** rather than silently skipping. This *is* the honest contrast with WikiExtractor's silent errors — not a failure.
+
+    Reproduce: `cargo xtask diff-fetch && cargo xtask diff-report` (pages cached gitignored; only the title list is committed). A small curated sample — a methodology proof, not yet the N-thousand-page run.
 - **Backward-compatibility ratchet:** the **528** cleanly-passing cases are pinned by name in [`tests/coverage_baseline.txt`](tests/coverage_baseline.txt) (names only — derived facts about wikrs, not the GPL fixture). `cargo test --test parser_tests coverage_ratchet` **fails if any pinned case regresses**, so coverage can only ratchet *up* and every change to it is a deliberate, reviewed baseline diff. The single coverage *percentage* can rise while individual cases silently break; this catches that. Re-bless an intended change: `BLESS_COVERAGE=1 cargo test --test parser_tests coverage_ratchet`.
 - **Robustness:** `strip` never panics and stays linear — 2 MB of adversarial input in ~150 ms (`tests/robustness.rs`, runs in CI). Deeper fuzzing: `cargo +nightly fuzz run strip`.
 
