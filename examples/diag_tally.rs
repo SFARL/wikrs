@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use wikrs::diag::Severity;
 
 fn main() {
-    let dir = std::env::args().nth(1).unwrap_or_else(|| "tests/diff/cache".into());
+    let dir = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "tests/diff/cache".into());
     let mut pages = 0usize;
     let mut page_with: BTreeMap<&str, usize> = BTreeMap::new(); // unsupported code -> #pages
     let mut occ: BTreeMap<&str, usize> = BTreeMap::new(); // any code -> #occurrences
@@ -54,6 +56,8 @@ fn main() {
     for (code, n) in &occ {
         println!("  {code:12} {n}");
     }
-    println!("\nPages where U-TABLE is the SOLE unsupported flag (table support would un-Report them):");
+    println!(
+        "\nPages where U-TABLE is the SOLE unsupported flag (table support would un-Report them):"
+    );
     println!("  {sole_table:?}");
 }

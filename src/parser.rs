@@ -660,8 +660,14 @@ mod tests {
         assert!(text.contains("Intro."), "lost prose: {text:?}");
         assert!(text.contains("Outro."), "lost prose: {text:?}");
         let codes: Vec<&str> = p.diagnostics.iter().map(|d| d.code).collect();
-        assert!(codes.contains(&"W-TEMPLATE"), "expected W-TEMPLATE, got {codes:?}");
-        assert!(!codes.contains(&"U-TABLE"), "false U-TABLE flag, got {codes:?}");
+        assert!(
+            codes.contains(&"W-TEMPLATE"),
+            "expected W-TEMPLATE, got {codes:?}"
+        );
+        assert!(
+            !codes.contains(&"U-TABLE"),
+            "false U-TABLE flag, got {codes:?}"
+        );
     }
 
     #[test]
