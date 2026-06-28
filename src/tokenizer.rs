@@ -21,6 +21,9 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
     let mut out = Vec::new();
     let mut i = 0;
     let mut start = 0;
+    // Once an unterminated `{{` is seen, there's no `}}` ahead — stop probing
+    // every subsequent `{{` (keeps a `{{`×N flood linear, not O(n^2)).
+    let mut no_template = false;
     while i < b.len() {
         // Multi-char spans at `<`: comment / <ref> (dropped), <nowiki> (inner kept).
         if b[i] == b'<' {
@@ -46,19 +49,27 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
                 continue;
             }
         }
-        // drop an inline template {{…}} (nesting-aware), keeping surrounding prose
-        if b[i] == b'{' && b.get(i + 1) == Some(&b'{') {
-            if let Some(end) = template_end(s, i) {
-                if start < i {
-                    out.push(Inline::Text(&s[start..i]));
+        // drop an inline template {{…}} (nesting-aware), keeping surrounding
+        // prose. The `no_template` check sits *inside* the `{{` branch (not the
+        // hot per-char condition): once one `{{` is unterminated there's no `}}`
+        // ahead, so stop probing — keeps `{{`×N linear without slowing normal text.
+        if b[i] == b'{' && b.get(i + 1) == Some(&b'{') && !no_template {
+            match template_end(s, i) {
+                Some(end) => {
+                    if start < i {
+                        out.push(Inline::Text(&s[start..i]));
+                    }
+                    i = end;
+                    start = i;
+                    continue;
                 }
-                i = end;
-                start = i;
-                continue;
+                None => no_template = true, // no `}}` ahead — stop probing
             }
         }
         let marker = if b[i] == b'\'' {
-            match b[i..].iter().take_while(|&&c| c == b'\'').count() {
+            // Only the first 3 matter (bold >=3 / italic 2 / text 1); capping the
+            // scan keeps a long `'''''…` run linear instead of O(n^2).
+            match b[i..].iter().take(3).take_while(|&&c| c == b'\'').count() {
                 n if n >= 3 => Some((Inline::Bold, 3)),
                 2 => Some((Inline::Italic, 2)),
                 _ => None, // a lone apostrophe is text

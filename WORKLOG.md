@@ -505,3 +505,17 @@
 - **Tests:** `word_precision_rescues_reordered_table_cells`（同词乱序→faithful）、`genuinely_different_words_stay_divergent`（异词→divergent）。9 diff 单测、全量绿、clippy 干净、smoke 不变。
 - **Benchmark:** 无 perf 相关改动（diff metric 不在 parse/strip 热路），ast 持平 ~158 MiB/s。
 - **Regression?** none。
+
+---
+
+## [2026-06-28] Stage 2：parser 健壮性——三个 O(n²) DoS 路径修复（默认引擎）
+
+- **差分外的安全网（TESTING.md 层 3）:** `robustness.rs` 原来只测 `strip`（Stage 1）。给 AST `parse()`（CLI 默认引擎）补上：对抗输入不崩、深嵌套不爆栈、2MB 线性。
+- **测试找出真 bug:** `parser_does_not_panic_on_adversarial_input` 跑了 **141 秒**——parser 在对抗输入上 O(n²)。逐 case 计时定位三处：
+  1. **撇号 run**（`'`×N）：tokenizer 每位置重数整个 run → O(n²)。修：`.take(3)`（只需知道 ≥3/2/1）。
+  2. **未闭合嵌套链接/强调**（`[[a|`×N）：`parse_inline` 每个未配对 opener 都重扫 closer → O(n²)。修：某 closer 变体一旦前方无 occurrence，后续同类 opener 直接 O(1) degrade。
+  3. **未闭合模板**（`{{`×N）：tokenizer 每个 `{{` 都 `template_end` 重扫 → O(n²)。修：首个未闭合 `{{` 后置 `no_template`（放 `{{` 分支条件**末尾**，非热路每字符）。
+- **效果:** robustness **141s → 0.30s**，三处全线性，加 `assert(<30s)` 防回归。
+- **Tests:** `parser_does_not_panic_on_adversarial_input`（13 对抗 case + 30s 上限）、`parser_survives_deeply_nested_links`（5万深不爆栈）、`parser_stays_linear_on_2mb_input`。41 lib 绿、全量绿、clippy 干净、`coverage_ratchet` 不退（纯提速、输出不变）。
+- **Benchmark（不确定——机器问题）:** 一次可靠 run（strip 正常 ~123）显示 ast **~145**（vs clean ~160，约 −9%）；但本会话密集 bench 后机器热降频，后续 run 里**未改动的 `strip` 都读到 74（−40%）**，环境已不可信。修复**按构造对正常输入近零成本**（flag 只在病态输入触发；`take(3)` 对 ≤3 run 与原代码逐字节相同）。**需换冷机器复测确认**。无论如何值得：默认引擎消除 3 个 O(n²) DoS（"线性、不崩"是卖点）。
+- **Regression?** 可能 ~1–9% ast（待冷机复测）；justified：换默认引擎的 DoS 安全。

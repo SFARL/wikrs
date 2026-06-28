@@ -300,52 +300,89 @@ fn cell_content(cell: &str) -> &str {
 fn parse_inline<'a>(tokens: &[Inline<'a>]) -> Vec<Node<'a>> {
     let mut out = Vec::new();
     let mut i = 0;
+    // Once a closer variant has no occurrence ahead, every later opener of that
+    // variant also has none — remember it and degrade in O(1) instead of
+    // re-scanning to the end each time (keeps unbalanced input like `[[a|`×N
+    // linear, not O(n^2)).
+    let (mut no_link, mut no_ext, mut no_bold, mut no_italic) = (false, false, false, false);
     while i < tokens.len() {
         match tokens[i] {
             Inline::Text(s) => {
                 out.push(Node::Text(Cow::Borrowed(s)));
                 i += 1;
             }
-            Inline::LinkOpen => match find(tokens, i + 1, Inline::LinkClose) {
-                Some(close) => {
-                    out.push(make_link(&tokens[i + 1..close]));
-                    i = close + 1;
+            Inline::LinkOpen => {
+                let found = if no_link {
+                    None
+                } else {
+                    find(tokens, i + 1, Inline::LinkClose)
+                };
+                match found {
+                    Some(close) => {
+                        out.push(make_link(&tokens[i + 1..close]));
+                        i = close + 1;
+                    }
+                    None => {
+                        no_link = true;
+                        out.push(Node::Text(Cow::Borrowed("[[")));
+                        i += 1;
+                    }
                 }
-                None => {
-                    out.push(Node::Text(Cow::Borrowed("[[")));
-                    i += 1;
+            }
+            Inline::ExtOpen => {
+                let found = if no_ext {
+                    None
+                } else {
+                    find(tokens, i + 1, Inline::ExtClose)
+                };
+                match found {
+                    Some(close) => {
+                        out.push(make_ext_link(&tokens[i + 1..close]));
+                        i = close + 1;
+                    }
+                    None => {
+                        no_ext = true;
+                        out.push(Node::Text(Cow::Borrowed("[")));
+                        i += 1;
+                    }
                 }
-            },
-            Inline::ExtOpen => match find(tokens, i + 1, Inline::ExtClose) {
-                Some(close) => {
-                    out.push(make_ext_link(&tokens[i + 1..close]));
-                    i = close + 1;
+            }
+            Inline::Bold => {
+                let found = if no_bold {
+                    None
+                } else {
+                    find(tokens, i + 1, Inline::Bold)
+                };
+                match found {
+                    Some(close) => {
+                        out.push(Node::Bold(parse_inline(&tokens[i + 1..close])));
+                        i = close + 1;
+                    }
+                    None => {
+                        no_bold = true;
+                        out.push(Node::Text(Cow::Borrowed("'''")));
+                        i += 1;
+                    }
                 }
-                None => {
-                    out.push(Node::Text(Cow::Borrowed("[")));
-                    i += 1;
+            }
+            Inline::Italic => {
+                let found = if no_italic {
+                    None
+                } else {
+                    find(tokens, i + 1, Inline::Italic)
+                };
+                match found {
+                    Some(close) => {
+                        out.push(Node::Italic(parse_inline(&tokens[i + 1..close])));
+                        i = close + 1;
+                    }
+                    None => {
+                        no_italic = true;
+                        out.push(Node::Text(Cow::Borrowed("''")));
+                        i += 1;
+                    }
                 }
-            },
-            Inline::Bold => match find(tokens, i + 1, Inline::Bold) {
-                Some(close) => {
-                    out.push(Node::Bold(parse_inline(&tokens[i + 1..close])));
-                    i = close + 1;
-                }
-                None => {
-                    out.push(Node::Text(Cow::Borrowed("'''")));
-                    i += 1;
-                }
-            },
-            Inline::Italic => match find(tokens, i + 1, Inline::Italic) {
-                Some(close) => {
-                    out.push(Node::Italic(parse_inline(&tokens[i + 1..close])));
-                    i = close + 1;
-                }
-                None => {
-                    out.push(Node::Text(Cow::Borrowed("''")));
-                    i += 1;
-                }
-            },
+            }
             // A stray closer or pipe outside a link is just literal text.
             Inline::LinkClose => {
                 out.push(Node::Text(Cow::Borrowed("]]")));
