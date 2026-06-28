@@ -55,19 +55,25 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
 }
 
 /// Split into blank-line-separated blocks, each tagged with its start offset.
+/// Brace-aware: a blank or heading line *inside* an open `{{…}}` template does
+/// NOT end the block — otherwise a multi-line template (big infobox,
+/// `{{#invoke:…}}`) fragments, defeating template-dropping and leaking its body.
 fn blocks(s: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut start: Option<usize> = None;
     let mut off = 0;
+    let mut brace_depth = 0usize;
     for line in s.split_inclusive('\n') {
         let here = off;
         off += line.len();
         let content = line.trim_end_matches('\n');
-        let is_heading = heading_parts(content).is_some();
-        // A blank line OR a heading line ends the current block; a heading is
-        // additionally its own one-line block (real wikitext rarely blank-pads
-        // headings, so this is what keeps them from gluing onto prose).
-        if content.trim().is_empty() || is_heading {
+        let at_top = brace_depth == 0;
+        // A blank line OR a heading line ends the current block (and a heading is
+        // additionally its own one-line block) — but only at top level. Inside an
+        // open template, a blank line or `== x ==`-looking text is template
+        // content, not a block boundary.
+        let is_heading = at_top && heading_parts(content).is_some();
+        if at_top && (content.trim().is_empty() || is_heading) {
             if let Some(st) = start.take() {
                 let block = s[st..here].trim_end_matches('\n');
                 if !block.is_empty() {
@@ -80,6 +86,7 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
         } else if start.is_none() {
             start = Some(here);
         }
+        brace_depth = update_brace_depth(brace_depth, content);
     }
     if let Some(st) = start {
         let block = s[st..off].trim_end_matches('\n');
@@ -88,6 +95,27 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
         }
     }
     out
+}
+
+/// Net `{{`/`}}` nesting change across one line, scanned left-to-right — the
+/// SAME ordered logic as `template_end` / `strip_inline_templates`, so the
+/// splitter and the stripper always agree where a template ends. Each `{{` is
+/// +1, each `}}` a saturating −1 (a stray `}}` in prose can't underflow). Linear.
+fn update_brace_depth(mut depth: usize, line: &str) -> usize {
+    let b = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'{' && b[i + 1] == b'{' {
+            depth += 1;
+            i += 2;
+        } else if b[i] == b'}' && b[i + 1] == b'}' {
+            depth = depth.saturating_sub(1);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    depth
 }
 
 /// If `line` is a single-line heading (`== … ==`), return `(level, inner text)`.
@@ -599,6 +627,41 @@ mod tests {
             "History\n\nEarth is the third planet."
         );
         assert!(matches!(p.nodes[0], Node::Heading { level: 2, .. }));
+    }
+
+    #[test]
+    fn blocks_keeps_multiline_template_whole() {
+        // A {{…}} with an internal blank line must stay ONE block, not fragment.
+        let wt = "{{infobox\n|a=1\n\n|b=2\n}}";
+        let bs = blocks(wt);
+        assert_eq!(bs.len(), 1, "expected one block, got {bs:?}");
+        assert_eq!(bs[0].1, "{{infobox\n|a=1\n\n|b=2\n}}");
+    }
+
+    #[test]
+    fn blocks_still_splits_normal_paragraphs() {
+        // Regression guard: prose with no open template still splits on blank lines.
+        let bs = blocks("Para one.\n\nPara two.");
+        assert_eq!(bs.len(), 2, "got {bs:?}");
+        assert_eq!(bs[0].1, "Para one.");
+        assert_eq!(bs[1].1, "Para two.");
+    }
+
+    #[test]
+    fn multiline_template_is_dropped_not_leaked() {
+        // A {{#invoke:…}} with internal blank lines used to fragment, leak its body
+        // as text, and false-flag U-TABLE. It must now drop cleanly: no leak, a
+        // W-TEMPLATE warning, and NO U-TABLE.
+        let wt = "Intro.\n\n{{#invoke:Sports table|main\n|name_A=Alpha\n\n|win_A=2 |loss_A=0\n}}\n\nOutro.";
+        let p = parse(wt);
+        let text = render::plain(&p.nodes);
+        assert!(!text.contains("{{"), "leaked template markup: {text:?}");
+        assert!(!text.contains("name_A"), "leaked template param: {text:?}");
+        assert!(text.contains("Intro."), "lost prose: {text:?}");
+        assert!(text.contains("Outro."), "lost prose: {text:?}");
+        let codes: Vec<&str> = p.diagnostics.iter().map(|d| d.code).collect();
+        assert!(codes.contains(&"W-TEMPLATE"), "expected W-TEMPLATE, got {codes:?}");
+        assert!(!codes.contains(&"U-TABLE"), "false U-TABLE flag, got {codes:?}");
     }
 
     #[test]

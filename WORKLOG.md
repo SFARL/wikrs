@@ -520,3 +520,15 @@
 - **Benchmark（已确认 ~10%，冷机 A/B）:** 用**未改动的 `strip` 当热控**（af0c5f0 不碰 strip），同机三组配置看 strip-归一化 `ast÷strip`：HEAD~1（改前）=**1.272** → 只换 tokenizer=**1.169** → HEAD（全改）=**1.110**，严格单调。两次单变量切换都指向「新代码更慢」，幅度可叠加（tokenizer ~8% + parser ~5% ≈ **~10%，区间 8–13%**）。这种按「含多少新代码」单调排序不是噪声造得出的——代价真实。绝对值：ast **~135 MiB/s**（strip ~121 的健康态下）。
 - **机理（非算法）:** 仍是线性，代价来自 **codegen/寄存器压力**——热路 `inline()` 里 loop-carried 的 `no_template`、`parse_inline` 的 4 个 closer flag，编译器要全程保活，即便本输入上它们从不触发。先前怀疑是噪声/单一文件，A/B 证伪：两文件都贡献。
 - **决策（D4）:** **接受**。DoS 安全是正确性/安全属性（非 span-awareness 那种边际打磨），换默认引擎消除 3 个 O(n²) 值这 ~10%；用户拍板「接受代价直接 push」。可选后续（冷机上做）：把 loop-carried flag 改成**循环不变量预判**（如 `inline()` 用一次性 `has_close`）试图抢回，但本会话噪声机上测不准，未做。
+
+---
+
+## [2026-06-28] Stage 2：修多行模板碎裂泄漏（brace-aware 分块器）
+
+- **问题（差分发现）:** 代表性随机样本（120 随机 ns0 页）上，**10/120 页把原始 `{{…}}` 模板标记漏进输出**（干净输出永不含 `{{`），把精度拖到最低 **6.4%**（`2010-11 Maltese…Knock-Out`）。而且**伪装成 U-TABLE**：25 个 U-TABLE 页里 8 个根本没有真 `{|`，差点把我们误导去建表格解析器——precision-led 测量（`examples/diag_tally.rs` + `show_page.rs`，直读 `parse()`）抓住真凶。
+- **根因:** `blocks()` 按空行切块，**不认 `{{`**。含空行的多行模板（大 infobox、`{{#invoke:…}}`）被空行切碎：首碎片是未闭合 `{{`，后续碎片是 `|param=` 行。`strip_inline_templates`（分类用）和 `strip_raw`（render 对 `Node::Unsupported` 的回退）都能处理**整段**模板，但都剥不掉未闭合的 `{{` → 首碎片误判 U-TABLE → `Node::Unsupported` → render 漏出模板体。
+- **修复:** `blocks()` 加 brace 深度（新 `update_brace_depth`，**按序**扫 `{{`/`}}`，与 `template_end` 同逻辑），空行/标题行只在深度 0 时断块 → 多行模板保持单块、被干净剥除。只动 `src/parser.rs` 一个函数，`render.rs` 不动，保留 borrow/span 模型、线性。spec/plan：`docs/superpowers/{specs,plans}/2026-06-28-template-fragmentation-leak*`。
+- **Tests（TDD 先红后绿）:** `blocks_keeps_multiline_template_whole`、`blocks_still_splits_normal_paragraphs`、`multiline_template_is_dropped_not_leaked`；robustness 加 `{{\n\n`×50k 守 brace 路径（线性、0.33s）。44 lib 绿、全量 9 target 绿、clippy 干净。
+- **差分验收（120 随机，修前→修后）:** 泄漏 **10/120 → 0/120**；精度 **88.5% → 91.0%**；word-precision **97.7% → 99.3%**；fully-faithful **106 → 115/120**；faithful 桶 52.5% → 57.5%；**0% silent 保持**；coverage 32.2%→32.0%（模板封顶不动，符合预期）。最低精度页 Maltese（6.4%）跌出榜尾，INS_Prachand 20%→44.4% 翻成 [F]。
+- **Benchmark（D4 闸）:** `wikrs_ast` **134.01 MiB/s**（strip 热控 125.11，健康；criterion δ 跨零=无变化）。brace 计数是每行一次的廉价扫描，零回归。
+- **顺带（README 纠偏）:** 吞吐表更新为 af0c5f0 后的真实值（ast ~152→~134、~1.3×→~1.1×；af0c5f0 的 ~10% 回归当时漏更新 README），随机差分数字更新到修后值。

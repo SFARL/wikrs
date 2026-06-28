@@ -53,6 +53,7 @@ fn parser_does_not_panic_on_adversarial_input() {
         "<ref>".repeat(100_000),      // unterminated refs
         "<!--".repeat(100_000),       // unterminated comments
         "{|".repeat(100_000),         // unterminated tables
+        "{{\n\n".repeat(50_000),      // open templates + blank lines (brace-aware split path)
         "'".repeat(200_000),          // emphasis runs
         "=".repeat(200_000),          // heading markers
         "<".repeat(200_000),          // lone angle brackets
