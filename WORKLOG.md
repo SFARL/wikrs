@@ -517,5 +517,6 @@
   3. **未闭合模板**（`{{`×N）：tokenizer 每个 `{{` 都 `template_end` 重扫 → O(n²)。修：首个未闭合 `{{` 后置 `no_template`（放 `{{` 分支条件**末尾**，非热路每字符）。
 - **效果:** robustness **141s → 0.30s**，三处全线性，加 `assert(<30s)` 防回归。
 - **Tests:** `parser_does_not_panic_on_adversarial_input`（13 对抗 case + 30s 上限）、`parser_survives_deeply_nested_links`（5万深不爆栈）、`parser_stays_linear_on_2mb_input`。41 lib 绿、全量绿、clippy 干净、`coverage_ratchet` 不退（纯提速、输出不变）。
-- **Benchmark（不确定——机器问题）:** 一次可靠 run（strip 正常 ~123）显示 ast **~145**（vs clean ~160，约 −9%）；但本会话密集 bench 后机器热降频，后续 run 里**未改动的 `strip` 都读到 74（−40%）**，环境已不可信。修复**按构造对正常输入近零成本**（flag 只在病态输入触发；`take(3)` 对 ≤3 run 与原代码逐字节相同）。**需换冷机器复测确认**。无论如何值得：默认引擎消除 3 个 O(n²) DoS（"线性、不崩"是卖点）。
-- **Regression?** 可能 ~1–9% ast（待冷机复测）；justified：换默认引擎的 DoS 安全。
+- **Benchmark（已确认 ~10%，冷机 A/B）:** 用**未改动的 `strip` 当热控**（af0c5f0 不碰 strip），同机三组配置看 strip-归一化 `ast÷strip`：HEAD~1（改前）=**1.272** → 只换 tokenizer=**1.169** → HEAD（全改）=**1.110**，严格单调。两次单变量切换都指向「新代码更慢」，幅度可叠加（tokenizer ~8% + parser ~5% ≈ **~10%，区间 8–13%**）。这种按「含多少新代码」单调排序不是噪声造得出的——代价真实。绝对值：ast **~135 MiB/s**（strip ~121 的健康态下）。
+- **机理（非算法）:** 仍是线性，代价来自 **codegen/寄存器压力**——热路 `inline()` 里 loop-carried 的 `no_template`、`parse_inline` 的 4 个 closer flag，编译器要全程保活，即便本输入上它们从不触发。先前怀疑是噪声/单一文件，A/B 证伪：两文件都贡献。
+- **决策（D4）:** **接受**。DoS 安全是正确性/安全属性（非 span-awareness 那种边际打磨），换默认引擎消除 3 个 O(n²) 值这 ~10%；用户拍板「接受代价直接 push」。可选后续（冷机上做）：把 loop-carried flag 改成**循环不变量预判**（如 `inline()` 用一次性 `has_close`）试图抢回，但本会话噪声机上测不准，未做。
