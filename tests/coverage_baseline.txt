@@ -178,6 +178,7 @@ Ignore rel attribute in a-tags during serialization to url-links
 Illegal character references (T106578, T113194)
 Improperly nested inline or quotes tags with whitespace in between
 Incorrectly removing closing slashes from correctly formed XHTML
+Indented block & table
 Indented table with an empty td
 Indented table with blank lines in between (T85627)
 Inline HTML vs wiki block nesting

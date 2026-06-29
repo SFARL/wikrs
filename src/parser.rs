@@ -55,25 +55,47 @@ pub fn parse(wikitext: &str) -> Parsed<'_> {
 }
 
 /// Split into blank-line-separated blocks, each tagged with its start offset.
-/// Brace-aware: a blank or heading line *inside* an open `{{…}}` template does
-/// NOT end the block — otherwise a multi-line template (big infobox,
-/// `{{#invoke:…}}`) fragments, defeating template-dropping and leaking its body.
+/// Brace-aware: a blank/heading line *inside* an open `{{…}}` template does NOT
+/// end the block (else a multi-line template fragments and leaks). Table-aware: a
+/// top-level `{|` starts a table block that accumulates until its matching `|}`,
+/// isolating it from surrounding prose (even with no blank-line separators).
 fn blocks(s: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut start: Option<usize> = None;
     let mut off = 0;
     let mut brace_depth = 0usize;
+    let mut table_depth = 0usize;
     for line in s.split_inclusive('\n') {
         let here = off;
         off += line.len();
         let content = line.trim_end_matches('\n');
+        // Inside an open `{|…|}` table: accumulate every line (blank lines and
+        // headings included) until the matching `|}` closes it, then emit the whole
+        // table as one block. (`update_table_depth` scans positionally, so the raw
+        // line works — no per-line trim needed.)
+        if table_depth > 0 {
+            table_depth = update_table_depth(table_depth, content);
+            brace_depth = update_brace_depth(brace_depth, content);
+            if table_depth == 0 {
+                if let Some(st) = start.take() {
+                    let block = s[st..off].trim_end_matches('\n');
+                    if !block.is_empty() {
+                        out.push((st, block));
+                    }
+                }
+            }
+            continue;
+        }
         let at_top = brace_depth == 0;
         // A blank line OR a heading line ends the current block (and a heading is
-        // additionally its own one-line block) — but only at top level. Inside an
-        // open template, a blank line or `== x ==`-looking text is template
-        // content, not a block boundary.
+        // additionally its own one-line block); a top-level `{|` opens a table
+        // block. Inside an open template, none of these are boundaries. The
+        // first-byte guard keeps the common (prose) line off the `trim_start` path.
+        let opens_table = at_top
+            && matches!(content.as_bytes().first(), Some(b'{' | b' ' | b'\t'))
+            && content.trim_start().starts_with("{|");
         let is_heading = at_top && heading_parts(content).is_some();
-        if at_top && (content.trim().is_empty() || is_heading) {
+        if at_top && (content.trim().is_empty() || is_heading || opens_table) {
             if let Some(st) = start.take() {
                 let block = s[st..here].trim_end_matches('\n');
                 if !block.is_empty() {
@@ -82,6 +104,12 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
             }
             if is_heading {
                 out.push((here, content));
+            }
+            if opens_table {
+                start = Some(here);
+                table_depth = update_table_depth(0, content);
+                brace_depth = update_brace_depth(brace_depth, content);
+                continue;
             }
         } else if start.is_none() {
             start = Some(here);
@@ -109,6 +137,27 @@ fn update_brace_depth(mut depth: usize, line: &str) -> usize {
             depth += 1;
             i += 2;
         } else if b[i] == b'}' && b[i + 1] == b'}' {
+            depth = depth.saturating_sub(1);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    depth
+}
+
+/// Net `{|`/`|}` table-nesting change across one (trimmed) line, scanned
+/// left-to-right — mirrors `update_brace_depth`. Each `{|` is +1, each `|}` a
+/// saturating −1. Lets `blocks()` keep a multi-line table (even with internal
+/// blank lines) in one block and end it at the matching close. Linear.
+fn update_table_depth(mut depth: usize, line: &str) -> usize {
+    let b = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'{' && b[i + 1] == b'|' {
+            depth += 1;
+            i += 2;
+        } else if b[i] == b'|' && b[i + 1] == b'}' {
             depth = depth.saturating_sub(1);
             i += 2;
         } else {
@@ -211,61 +260,84 @@ fn parse_pre(block: &str) -> Option<Node<'_>> {
     Some(Node::Preformatted(lines))
 }
 
-/// Whether a `<ref>…</ref>` in `block` spans more than one line (or is left
-/// open). Inside a table such a ref's inner `|`-prefixed lines (a multi-line
-/// `{{cite}}`) get misread as table cells, so the table parser bails on it.
-fn has_multiline_ref(block: &str) -> bool {
-    let mut rest = block;
-    while let Some(o) = rest.find("<ref") {
-        let after = &rest[o..];
-        // Distinguish `<ref …` from `<references…`: the char after "ref" must end
-        // the tag name.
-        if !matches!(
-            after.as_bytes().get(4),
-            Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')
-        ) {
-            rest = &after[4..];
-            continue;
-        }
-        let Some(gt) = after.find('>') else {
-            return true; // open tag never closed
-        };
-        if after[..gt].trim_end().ends_with('/') {
-            rest = &after[gt + 1..]; // self-closing, no body
-            continue;
-        }
-        match after[gt + 1..].find("</ref>") {
-            Some(c) => {
-                if after[..gt + 1 + c].contains('\n') {
-                    return true; // body spans lines
-                }
-                rest = &after[gt + 1 + c + "</ref>".len()..];
+/// `block.lines()`, except a newline INSIDE a `<ref>…</ref>` does not split — so a
+/// multi-line `<ref>{{cite …}}</ref>` in a cell stays in its row instead of
+/// fragmenting it into bogus cells. Each returned line is a contiguous slice of
+/// `block` (no trailing newline), so cells stay borrowable.
+fn table_logical_lines(block: &str) -> Vec<&str> {
+    let b = block.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    let mut in_ref = false;
+    while i < b.len() {
+        if in_ref {
+            if b[i] == b'<' && b[i..].len() >= 6 && b[i..i + 6].eq_ignore_ascii_case(b"</ref>") {
+                in_ref = false;
+                i += 6;
+                continue;
             }
-            None => return true, // body never closed
+            i += 1;
+        } else if b[i] == b'\n' {
+            out.push(&block[start..i]);
+            start = i + 1;
+            i += 1;
+        } else if b[i] == b'<' && ref_opens_body(&block[i..]) {
+            in_ref = true;
+            i += 1;
+        } else {
+            i += 1;
         }
     }
-    false
+    if start < b.len() {
+        out.push(&block[start..]);
+    }
+    out
+}
+
+/// `s` starts with `<`. True if it opens a `<ref …>` that has a body — a real
+/// `<ref>` (not `<references>`) that isn't self-closing (`<ref … />`). An unclosed
+/// `<ref …>` counts as opening a body (it swallows to end-of-block, as the
+/// tokenizer does).
+fn ref_opens_body(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() < 4 || !b[1..4].eq_ignore_ascii_case(b"ref") {
+        return false;
+    }
+    if !matches!(b.get(4), Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')) {
+        return false;
+    }
+    match s.find('>') {
+        Some(gt) => !s[..gt].trim_end().ends_with('/'),
+        None => true,
+    }
 }
 
 /// A `{| … |}` block → a table (rows × cells of inline content). Cell attributes
-/// are dropped; a table with a multi-line cell (a line that isn't table markup)
-/// returns `None` and stays Unsupported, so we never fake structure we didn't
-/// actually parse.
+/// are dropped; a `<ref>…</ref>` in a cell (even multi-line) is skipped over so it
+/// doesn't fragment the row, then dropped by the tokenizer. We bail (`None` →
+/// Unsupported) rather than fake structure: on a non-table-markup line (a true
+/// multi-line cell, a nested table) and on spanning-cell grids (colspan/rowspan),
+/// which we can't flatten faithfully into rows×cells.
 fn parse_table(block: &str) -> Option<Node<'_>> {
     if !block.trim_start().starts_with("{|") {
         return None;
     }
-    // A <ref>…</ref> spanning lines has its inner `|`-prefixed cite params misread
-    // as table cells — bail so we flag it (U-TABLE) rather than silently leak the
-    // citation markup (D2).
-    if has_multiline_ref(block) {
+    // Spanning cells make a grid we can't flatten faithfully — bail (honest
+    // U-TABLE) rather than emit a plausible-but-misaligned table that silently
+    // diverges from the rendered grid. (This is what keeps the random sample at
+    // 0% silent; see WORKLOG 2026-06-28.)
+    if block.contains("colspan") || block.contains("rowspan") {
         return None;
     }
     let mut rows: Vec<Vec<Vec<Node>>> = Vec::new();
     let mut current: Vec<Vec<Node>> = Vec::new();
     let mut started = false;
-    for line in block.lines() {
+    for line in table_logical_lines(block) {
         let l = line.trim_start();
+        if l.is_empty() {
+            continue; // blank line within the table (spacing between rows)
+        }
         if l.starts_with("{|") || l.starts_with("|}") || l.starts_with("|+") {
             continue; // open / close / caption
         } else if l.starts_with("|-") {
@@ -274,8 +346,12 @@ fn parse_table(block: &str) -> Option<Node<'_>> {
             }
             started = true;
         } else if let Some(rest) = l.strip_prefix('!') {
-            for cell in rest.split("!!") {
-                current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+            // Header cells separate on `!!` *or* `||` (MediaWiki allows both in a
+            // `!` row); split on both so a trailing `||` run doesn't leak as text.
+            for part in rest.split("!!") {
+                for cell in part.split("||") {
+                    current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+                }
             }
             started = true;
         } else if let Some(rest) = l.strip_prefix('|') {
@@ -648,6 +724,29 @@ mod tests {
     }
 
     #[test]
+    fn blocks_unglue_table_from_surrounding_prose() {
+        // A {| table glued to prose (no blank lines) must split into 3 blocks:
+        // prose / the {|…|} table / prose — even without blank separators.
+        let wt = "Prior.\n{| class=\"wikitable\"\n|-\n| a\n|}\nAfter.";
+        let bs = blocks(wt);
+        let texts: Vec<&str> = bs.iter().map(|(_, b)| *b).collect();
+        assert_eq!(
+            texts,
+            vec!["Prior.", "{| class=\"wikitable\"\n|-\n| a\n|}", "After."],
+            "got {bs:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_table_with_internal_blank_line_stays_one_block() {
+        // A blank line inside the table does not split it.
+        let wt = "{|\n| a\n\n| b\n|}";
+        let bs = blocks(wt);
+        assert_eq!(bs.len(), 1, "got {bs:?}");
+        assert_eq!(bs[0].1, "{|\n| a\n\n| b\n|}");
+    }
+
+    #[test]
     fn multiline_template_is_dropped_not_leaked() {
         // A {{#invoke:…}} with internal blank lines used to fragment, leak its body
         // as text, and false-flag U-TABLE. It must now drop cleanly: no leak, a
@@ -872,20 +971,63 @@ mod tests {
     }
 
     #[test]
-    fn table_with_multiline_ref_is_flagged_not_silently_mangled() {
-        // A <ref> spanning lines inside a cell has its inner `|`-prefixed cite
-        // params misread as table cells. Flag it (U-TABLE) rather than silently
-        // leak the citation markup (D2); lead prose outside the table survives.
-        let wt = "Intro prose.\n\n{|\n|-\n| Smith <ref name=a>{{cite web\n| url = http://e.com\n| title = T}}</ref>\n| 1974\n|}";
-        let p = parse(wt);
+    fn table_header_row_splits_on_both_separators_no_leak() {
+        // A header row may mix `!!` and `||` separators; both must split, else the
+        // trailing `||`-separated cells leak as raw text.
+        let node = parse_table("{|\n! a !! b || c\n|}").expect("parses");
+        let text = render::plain(std::slice::from_ref(&node));
+        assert!(!text.contains("||"), "leaked || markup: {text:?}");
+        assert_eq!(text.trim_end(), "a\tb\tc");
+    }
+
+    #[test]
+    fn table_with_spanning_cells_bails_honestly() {
+        // A colspan/rowspan grid can't be flattened faithfully — bail (U-TABLE)
+        // rather than emit a plausible-but-misaligned table that silently diverges.
+        let p = parse("{|\n! colspan=2 | Title\n|-\n| a || b\n|}");
         assert!(
             p.diagnostics.iter().any(|d| d.code == "U-TABLE"),
-            "expected U-TABLE, got {:?}",
+            "colspan grid should bail, got {:?}",
             p.diagnostics
         );
+    }
+
+    #[test]
+    fn parse_table_handles_multiline_ref_in_cell() {
+        // A cell with a multi-line <ref>{{cite …}}</ref> used to force a U-TABLE
+        // bail (has_multiline_ref). It must now parse: ref dropped, plain cells stay.
+        let block = "{| class=\"wikitable\"\n|-\n| Alpha\n| 42<ref>{{cite web |title=x\n|url=y}}</ref>\n|-\n| Beta\n| 7\n|}";
+        let node = parse_table(block).expect("table should parse, not bail");
+        let text = render::plain(std::slice::from_ref(&node));
+        assert!(!text.contains("cite web"), "ref leaked: {text:?}");
+        assert!(!text.contains("url=y"), "ref param leaked: {text:?}");
+        assert!(
+            text.contains("Alpha") && text.contains("Beta"),
+            "lost cells: {text:?}"
+        );
+        assert!(
+            text.contains("42") && text.contains('7'),
+            "lost data: {text:?}"
+        );
+    }
+
+    #[test]
+    fn table_with_multiline_ref_in_cell_parses_dropping_the_ref() {
+        // A <ref> spanning lines inside a cell used to force U-TABLE (its `|`-prefixed
+        // cite params looked like cells). It now parses: the ref is dropped, the cell
+        // text + lead prose survive, no citation markup leaks (D2).
+        let wt = "Intro prose.\n\n{|\n|-\n| Smith <ref name=a>{{cite web\n| url = http://e.com\n| title = T}}</ref>\n| 1974\n|}";
+        let p = parse(wt);
         let text = render::plain(&p.nodes);
         assert!(text.contains("Intro prose"), "lost lead prose: {text:?}");
+        assert!(text.contains("Smith"), "lost cell text: {text:?}");
+        assert!(text.contains("1974"), "lost cell data: {text:?}");
         assert!(!text.contains("url"), "leaked cite markup: {text:?}");
+        assert!(
+            !p.diagnostics.iter().any(|d| d.code == "U-TABLE"),
+            "table should parse now, not bail: {:?}",
+            p.diagnostics
+        );
     }
 
     #[test]

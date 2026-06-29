@@ -532,3 +532,17 @@
 - **差分验收（120 随机，修前→修后）:** 泄漏 **10/120 → 0/120**；精度 **88.5% → 91.0%**；word-precision **97.7% → 99.3%**；fully-faithful **106 → 115/120**；faithful 桶 52.5% → 57.5%；**0% silent 保持**；coverage 32.2%→32.0%（模板封顶不动，符合预期）。最低精度页 Maltese（6.4%）跌出榜尾，INS_Prachand 20%→44.4% 翻成 [F]。
 - **Benchmark（D4 闸）:** `wikrs_ast` **134.01 MiB/s**（strip 热控 125.11，健康；criterion δ 跨零=无变化）。brace 计数是每行一次的廉价扫描，零回归。
 - **顺带（README 纠偏）:** 吞吐表更新为 af0c5f0 后的真实值（ast ~152→~134、~1.3×→~1.1×；af0c5f0 的 ~10% 回归当时漏更新 README），随机差分数字更新到修后值。
+
+---
+
+## [2026-06-28] Stage 2：`{|` 表格抽取（精准子集 + grid-bail 保 0% silent）
+
+- **目标:** 抽取能干净解析的 `{|` 表格、缩小 U-TABLE bail。spec/plan：`docs/superpowers/{specs,plans}/2026-06-28-table-extraction*`。
+- **组件 1 — `blocks()` 解黏表格:** 新 `update_table_depth`；top-level `{|` 自成块、累积到配对 `|}`（含内部空行），把表格从前后 prose 解黏。`{|` 检测用首字节 guard（`{`/空格/tab）避开正常 prose 行的 `trim_start`。
+- **组件 2 — `parse_table` 鲁棒化:** (a) `table_logical_lines`：换行在 `<ref>…</ref>` 内不断行 → 多行 cite 不再碎裂成假 cell，删 `has_multiline_ref` bail；(b) header 行 `!!` 和 `||` 都切（之前只切 `!!`，混用时尾部 `||` 漏成文本）；(c) 表内空行跳过（解黏后空行会进表块）。
+- **差分抓 bug（precision-led 又赢一次）:** 首轮验收 diff 抓到 **1 个 silent 页 + 2 个 `||` 泄漏**。`||` 泄漏 = header 混用 `!!`/`||`（修 b）；silent = `Ryley_Music`，但 word-diff 证明它**已验证 faithful**（仅 4 个 token `LGY 21/26/28`，Parsoid 对该网格 cell 渲染不同）——是 dense-grid 的度量边界，不是 garbling。
+- **决策（D2，用户拍板）:** 加 **colspan/rowspan grid-bail**——跨格网格无法忠实摊平成 rows×cells，诚实 bail（U-TABLE）而非输出貌似合理却静默偏离的表，保住「0% silent」招牌。代价：bail 偏钝（连带让 ~12 个本可抽的表也 bail）。
+- **Tests（TDD）:** 6 个新/改表格+blocks 测试（解黏、内部空行、`!!`/`||` 不泄漏、grid-bail、多行 ref 解析、重写旧 flag 测试）；robustness 加 `{|\n| x\n`×50k（线性）。修了一个 ratchet 回归（T85627 缩进表内空行 → `parse_table` 跳过空行）；ratchet **+1**（`Indented block & table` 现在干净解析，已 bless）。49 lib 绿、全量 9 target 绿、clippy/fmt 干净。
+- **差分验收（120 随机，本特性前→后）:** U-TABLE **25→18 页**；coverage 32.0%→31.8%（持平，grid-bail 抵消增益）；精度 91.0%→**91.3%**；word 99.3%、**0% silent 保持**、**0 表格标记泄漏**；fully-faithful 115/120。
+- **Benchmark（D4）:** `wikrs_ast` **~129 MiB/s**（strip 热控 ~123，机器偏热；与 ~134 冷基线在噪声内——表格代码对非表格行近零成本，trim 优化未改变 strip-归一化比值，证实非 per-line trim 成本）。无确认回归。
+- **诚实结论:** 净收益不大（~7 个非网格表 un-flag、coverage 持平），但 precision-led 流程拦住了 silent 回归、grid-bail 保住了招牌；表格抽取的有界性又一次被证实。简单表抽、网格表诚实 flag。
