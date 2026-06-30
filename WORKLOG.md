@@ -546,3 +546,17 @@
 - **差分验收（120 随机，本特性前→后）:** U-TABLE **25→18 页**；coverage 32.0%→31.8%（持平，grid-bail 抵消增益）；精度 91.0%→**91.3%**；word 99.3%、**0% silent 保持**、**0 表格标记泄漏**；fully-faithful 115/120。
 - **Benchmark（D4）:** `wikrs_ast` **~129 MiB/s**（strip 热控 ~123，机器偏热；与 ~134 冷基线在噪声内——表格代码对非表格行近零成本，trim 优化未改变 strip-归一化比值，证实非 per-line trim 成本）。无确认回归。
 - **诚实结论:** 净收益不大（~7 个非网格表 un-flag、coverage 持平），但 precision-led 流程拦住了 silent 回归、grid-bail 保住了招牌；表格抽取的有界性又一次被证实。简单表抽、网格表诚实 flag。
+
+---
+
+## [2026-06-30] Stage 2：真实 dump 端到端验证（simplewiki 281,799 页）⭐
+
+- **为什么:** 抽取质量在 120 页 curated 样本上爬到头（0% silent / 99.3% word-precision），diff 井抽干。两个卖点里「快」的证据**全建立在合成 dump**（同一篇文章 ×5000）上——README 自己标注「real heterogeneous dumps will differ」。本次拉真实 simplewiki dump（2026-06 快照，349 MB bz2 → 1.67 GB / 1.59 GiB XML，281,799 篇 ns0 文章）端到端验证速度与转化率。**纯测量，无 src/xtask 代码改动**（复用现成 `--stats` / `bench-compare`）。
+- **速度（验证且强化）:** 单核端到端 **~150 MiB/s**（144–158，真实异构 XML），10 核 **~380 MiB/s**（368–388）。vs WikiExtractor（全量、同 `bench-compare` harness、同 `-o -` 单流）：wikrs **322 MB/s** vs WikiExtractor **10.2 MB/s = 31.7×**——比合成 22× 还高。**合成 22× 是保守不是虚高**：小输入被 wikrs 进程启动开销主导（16 MB 切片只 5.2×、8 MB 合成 47 MB/s 同理），全量 amortize 后真吞吐才显出来。
+- **转化率（真实 = 91.9%，新信号）:** `--stats` 全量 281,799 页 **91.9% clean**（输出零残留 `{{}}`/`[[]]`/`{||}`），vs 合成 parserTests 98.1%。真实文章更脏，~8% leak tail 是 120 页样本从没暴露的真账。
+- **leak tail 已定性（下一步目标）:** 逐页 tally——**`]]` 6.7%（18,923 页，绝对主因）**、`|}` 1.3%、其余全 <0.3%。`[[`/`]]` 不对称（0.3% vs 6.7%）点名是**链接闭合 bug 而非泛解析失败**。例页（April / Art / Air / Alan Turing）全是 **File/图片 caption 尾巴带闭合 `]]` 泄漏**——疑似 `[[File:…|thumb|…[[嵌套 wikilink]]…]]`，drop 逻辑匹配到**内层** `]]`，把 caption 尾 + 外层 `]]` 漏出。真实数据上的 #1 正确性 bug，bounded 可修。
+- **Tests:** 无（纯测量、零代码改动）；现有全量测试未触动仍绿。
+- **Benchmark:** criterion 引擎微基准不变（~134 MiB/s，未改代码）；本条新增的是**真实 dump 端到端**数字（上面），与单文件微基准互补。
+- **Regression?** none（无代码改动）。
+- **落点 & 复现:** dump gitignored 于 `target/realdump/`；`cargo xtask bench-compare target/realdump/simplewiki-articles.xml`、`./target/release/wikrs --input … --stats`。README「Benchmarks & test status」吞吐/转化率段已更新为真实 dump 数字。
+- **下一步（真账点名）:** 修 `]]` File-caption 嵌套泄漏（TDD：red = 嵌套 wikilink 的 File caption 漏 `]]`；green 后重跑 `--stats` 看 91.9% 往上跳）——真实数据挖出的、影响 6.7% 页的 #1 目标。可选：上 enwiki 切片做更硬头条；差分从 dump 自身抽样。
