@@ -71,11 +71,10 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
         let content = line.trim_end_matches('\n');
         // Inside an open `{|…|}` table: accumulate every line (blank lines and
         // headings included) until the matching `|}` closes it, then emit the whole
-        // table as one block. (`update_table_depth` scans positionally, so the raw
+        // table as one block. (`update_table_brace` scans positionally, so the raw
         // line works — no per-line trim needed.)
         if table_depth > 0 {
-            table_depth = update_table_depth(table_depth, content);
-            brace_depth = update_brace_depth(brace_depth, content);
+            (table_depth, brace_depth) = update_table_brace(table_depth, brace_depth, content);
             if table_depth == 0 {
                 if let Some(st) = start.take() {
                     let block = s[st..off].trim_end_matches('\n');
@@ -107,8 +106,7 @@ fn blocks(s: &str) -> Vec<(usize, &str)> {
             }
             if opens_table {
                 start = Some(here);
-                table_depth = update_table_depth(0, content);
-                brace_depth = update_brace_depth(brace_depth, content);
+                (table_depth, brace_depth) = update_table_brace(0, brace_depth, content);
                 continue;
             }
         } else if start.is_none() {
@@ -146,25 +144,30 @@ fn update_brace_depth(mut depth: usize, line: &str) -> usize {
     depth
 }
 
-/// Net `{|`/`|}` table-nesting change across one (trimmed) line, scanned
-/// left-to-right — mirrors `update_brace_depth`. Each `{|` is +1, each `|}` a
-/// saturating −1. Lets `blocks()` keep a multi-line table (even with internal
-/// blank lines) in one block and end it at the matching close. Linear.
-fn update_table_depth(mut depth: usize, line: &str) -> usize {
+/// Single left-to-right pass updating BOTH table-nesting (`{|`/`|}`) and
+/// brace-nesting (`{{`/`}}`) depth across one line. Table markers are only
+/// counted at brace depth 0, so a `|}`/`{|` *inside* a `{{template|…|}}` — whose
+/// `|}}` contains the bytes `|}` — does not falsely close (or open) a table.
+/// This keeps a multi-line table whose cells hold templates (`{{frac|1|12|}}`,
+/// `{{convert|…}}`) as one block instead of fragmenting mid-row and leaking the
+/// real `|}`. Brace state threads across lines (templates can span them). Linear.
+fn update_table_brace(mut table: usize, mut brace: usize, line: &str) -> (usize, usize) {
     let b = line.as_bytes();
     let mut i = 0;
     while i + 1 < b.len() {
-        if b[i] == b'{' && b[i + 1] == b'|' {
-            depth += 1;
-            i += 2;
-        } else if b[i] == b'|' && b[i + 1] == b'}' {
-            depth = depth.saturating_sub(1);
-            i += 2;
-        } else {
-            i += 1;
+        match (b[i], b[i + 1]) {
+            (b'{', b'{') => brace += 1,
+            (b'}', b'}') => brace = brace.saturating_sub(1),
+            (b'{', b'|') if brace == 0 => table += 1,
+            (b'|', b'}') if brace == 0 => table = table.saturating_sub(1),
+            _ => {
+                i += 1;
+                continue;
+            }
         }
+        i += 2;
     }
-    depth
+    (table, brace)
 }
 
 /// If `line` is a single-line heading (`== … ==`), return `(level, inner text)`.
@@ -1052,6 +1055,23 @@ mod tests {
         // a multi-line cell makes the table Unsupported (strip-fallback)
         let c = parse("{|\n| cell line one\nstill the cell\n|}");
         assert!(c.diagnostics.iter().any(|d| d.code == "U-TABLE"));
+    }
+
+    #[test]
+    fn table_cell_template_with_pipe_brace_stays_one_table() {
+        // Real-dump bug (simplewiki "Inch", the top `|}` leak): a cell holds
+        // {{frac|1|12|}}, whose `|}}` contains the bytes `|}`. A brace-blind
+        // table-depth counter reads that as the table close, fragments the table
+        // mid-row, and leaks the content + the real `|}`. A `{{…}}` must never
+        // open or close a table.
+        let wt = "{| class=\"wikitable\"\n|-\n! A !! B\n| x || {{frac|1|12|}} || y\n|}";
+        let out = render::plain(&parse(wt).nodes);
+        assert!(!out.contains("|}"), "leaked table close: {out:?}");
+        assert!(
+            !out.contains("{{") && !out.contains("}}"),
+            "leaked template: {out:?}"
+        );
+        assert!(!out.contains("||"), "leaked raw row markup: {out:?}");
     }
 
     #[test]

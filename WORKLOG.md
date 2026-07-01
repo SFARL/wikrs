@@ -573,3 +573,17 @@
 - **Benchmark（D4 闸）:** `wikrs_ast` **无变化**（criterion vs `before` baseline：change p=0.15>0.05，带 −1.1%/+2.3%/+5.1% 噪声内；"No change in performance detected"）。深度表按块建 + 无链接块 gate 吸收成本。cold 基线 ~134 MiB/s 持平。
 - **Regression?** none（perf 噪声内、DoS 线性守住、ratchet 不退）。
 - **下一步:** `|}` 表格闭合泄漏（1.29%，现最大残留）；可选 enwiki 切片做更硬头条。
+
+---
+
+## [2026-06-30] Stage 2：表格深度计数 brace-aware（`{{…|}}` 不再碎裂表格）
+
+- **承上（`|}` 残留 dissect）:** `]]` 修完后 `|}` 成最大残留（1.29%）。dissect 最低页 Inch：表格 cell 含 `{{frac|1|12|}}`，其 `|}}` 里的字节 `|}` 被 **brace-盲** 的 `update_table_depth` 当成表格闭合 → 表格行中碎裂、内容当正文泄漏、真 `|}` 落单泄漏（0 诊断=静默）。
+- **根因:** `update_table_depth` 只数 `{|`/`|}` 字节对，不认 `{{…}}`——模板里的 `|}` 假闭合表格。是**模板碎裂**问题，非表格解析器缺陷（正合 [[wikrs-utable-is-mostly-template-leak]]）。
+- **修复（合并单扫 + brace-aware）:** `update_table_depth` + `update_brace_depth` 两次扫描合并成一个 `update_table_brace`——单趟左→右，同跟 `{{`/`}}` 和 `{|`/`|}`，**表格标记只在 brace 深度 0 计**；模板里的 `|}`/`{|` 不再假开/闭表格。brace 状态跨行。删掉旧 `update_table_depth`（无用）。
+- **Tests（TDD 先红后绿）:** `table_cell_template_with_pipe_brace_stays_one_table`（`{{frac|1|12|}}` cell 不碎表、不泄漏 `|}`/`{{`/`||`）。51 lib 绿、全量 9 target 绿、robustness 线性、clippy/fmt 干净、`coverage_ratchet` 不退。
+- **真实验收（simplewiki 全量，修前→修后）:** clean **97.9%→98.0%**（+0.1pt）；`|}` **1.29%→1.18%**（~307 页）。**收益小且诚实**：`|}` 残留 89%（3338 中 2966 页）**同时泄漏 `||`** = 整张原始表泄漏，多是 colspan/rowspan **grid 表**（按 D2 grid-bail 有意 flag，非本 bug）。`{{…|}}` 只是一小类。
+- **为何仍值得:** 修的是**正确的机制**（模板 brace-awareness），零回归、顺手把两次扫描合一（略快、码更简）；`{{frac}}`/`{{convert}}` 在 enwiki 表格里密得多，那边收益应更大。
+- **Benchmark（D4 闸）:** `wikrs_ast` **无变化**（criterion vs `before`：change p=0.66>0.05，−0.77% 点估计噪声内）。~134 MiB/s 持平。
+- **Regression?** none。
+- **决策（停）:** `|}` 残留主体是 grid 表（有意 bail），**不追**——正合 [[wikrs-utable-is-mostly-template-leak]]「修模板消费，别建表格解析器」。extraction-quality 清晰收官：`]]`（+6pt）真赢、`{{…|}}`（+0.1pt）正确小补、grid 表是有意的诚实 flag。
