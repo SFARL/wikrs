@@ -47,21 +47,23 @@ fn parser_does_not_panic_on_adversarial_input() {
     // The AST parser (the CLI default) must be as robust as strip on malformed
     // input — never panic, hang, or blow up.
     let cases = [
-        "{{".repeat(100_000),         // unbalanced open templates
-        "}}".repeat(100_000),         // unbalanced close
-        "[[".repeat(100_000),         // unterminated links
-        "<ref>".repeat(100_000),      // unterminated refs
-        "<!--".repeat(100_000),       // unterminated comments
-        "{|".repeat(100_000),         // unterminated tables
-        "{{\n\n".repeat(50_000),      // open templates + blank lines (brace-aware split path)
-        "{|\n| x\n".repeat(50_000),   // unterminated table flood (table-depth split path)
-        "'".repeat(200_000),          // emphasis runs
-        "=".repeat(200_000),          // heading markers
-        "<".repeat(200_000),          // lone angle brackets
-        "[[a|".repeat(50_000),        // half-open piped links
-        "café☕".repeat(50_000),      // multibyte, no markup
+        "{{".repeat(100_000),                  // unbalanced open templates
+        "}}".repeat(100_000),                  // unbalanced close
+        "[[".repeat(100_000),                  // unterminated links
+        "<ref>".repeat(100_000),               // unterminated refs
+        "<!--".repeat(100_000),                // unterminated comments
+        "{|".repeat(100_000),                  // unterminated tables
+        "{{\n\n".repeat(50_000), // open templates + blank lines (brace-aware split path)
+        "{|\n| x\n".repeat(50_000), // unterminated table flood (table-depth split path)
+        "'".repeat(200_000),     // emphasis runs
+        "=".repeat(200_000),     // heading markers
+        "<".repeat(200_000),     // lone angle brackets
+        "[[a|".repeat(50_000),   // half-open piped links
+        "café☕".repeat(50_000), // multibyte, no markup
         "| c || d\n".repeat(100_000), // a flood of table-cell lines
-        "* item\n".repeat(100_000),   // a flood of flat list items
+        "* item\n".repeat(100_000), // a flood of flat list items
+        "[[File:a|[[x]]".repeat(50_000), // nested media, unbalanced outer ]] (depth-match table path)
+        "[[File:a|[[x]] cap]]".repeat(50_000), // balanced nested media captions
     ];
     let start = std::time::Instant::now();
     for c in &cases {

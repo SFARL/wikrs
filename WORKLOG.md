@@ -560,3 +560,16 @@
 - **Regression?** none（无代码改动）。
 - **落点 & 复现:** dump gitignored 于 `target/realdump/`；`cargo xtask bench-compare target/realdump/simplewiki-articles.xml`、`./target/release/wikrs --input … --stats`。README「Benchmarks & test status」吞吐/转化率段已更新为真实 dump 数字。
 - **下一步（真账点名）:** 修 `]]` File-caption 嵌套泄漏（TDD：red = 嵌套 wikilink 的 File caption 漏 `]]`；green 后重跑 `--stats` 看 91.9% 往上跳）——真实数据挖出的、影响 6.7% 页的 #1 目标。可选：上 enwiki 切片做更硬头条；差分从 dump 自身抽样。
+
+---
+
+## [2026-06-30] Stage 2：修 `]]` File-caption 嵌套泄漏（真实转化率 91.9%→97.9%）⭐
+
+- **承上（真实 dump 点名的 #1 bug）:** simplewiki 全量 `--stats` 挖出 ~8% 页泄漏残留标记，主因 `]]` 占 6.7%（18,923 页）。dissect（`examples/show_page`，直读 `parse`）定位真凶——File/图片 caption 内嵌 `[[wikilink]]`（如 Air 页 `[[File:Fan.jpg|thumb|A [[wikt:fan|fan]] moves air.]]`）。
+- **根因（systematic-debugging 定位到码级）:** `parse_inline` 的 `[[` 用 `find` 扁平匹配**第一个** `]]`——对普通链接对，但 File caption 内嵌 `[[…]]` 时，外层 File 链接被内层 `]]` 提前闭合：target 仍是 File→drop，但 `i` 跳到内层 `]]` 之后，caption 尾（" moves air."）当正文输出、外层 `]]` 落入 stray-closer 分支→字面泄漏。**0 诊断 = 静默泄漏**。
+- **修复（scoped，保线性）:** 只给**非正文** media/category 链接（File/Image/Category）做深度匹配闭合——`link_close_matches`（一次 O(n) 栈扫，给每个 `[[` 配深度匹配的 `]]`）+ `link_target_is_nonprose`（peek 首 token 的 ns）。命中则把闭合位延到深度匹配的外层 `]]`，交由 `make_link` 整条 drop。**普通链接仍走扁平首闭**（深层嵌套递归保持浅、线性——不动既有 `parser_survives_deeply_nested_links` 的 prose 深嵌套）。深度表**仅在块含 `[[` 时才建**，无链接散文零开销。
+- **Tests（TDD 先红后绿）:** `drops_media_link_with_nested_caption_link`（嵌套 caption→空、Body 保留、两层嵌套、`]]` 不泄漏）。robustness 加两条对抗流（`[[File:a|[[x]]`×50k 不平衡 + `[[File:a|[[x]] cap]]`×50k 平衡）守深度表线性。50 lib 绿、全量 9 target 绿、robustness **5.07s**（<30s，线性无 O(n²)）、clippy/fmt 干净、`coverage_ratchet` 不退。
+- **真实验收（simplewiki 全量 281,799 页，修前→修后）:** clean **91.9%→97.9%**（+6.0pt）；`]]` 泄漏 **6.7%→0.66%**（18,923→1,862 页，−90%）。残留 0.66% 是诚实底噪（畸形源等），非本 bug。`|}`（1.29%）现为最大残留（表格闭合，下一目标）。
+- **Benchmark（D4 闸）:** `wikrs_ast` **无变化**（criterion vs `before` baseline：change p=0.15>0.05，带 −1.1%/+2.3%/+5.1% 噪声内；"No change in performance detected"）。深度表按块建 + 无链接块 gate 吸收成本。cold 基线 ~134 MiB/s 持平。
+- **Regression?** none（perf 噪声内、DoS 线性守住、ratchet 不退）。
+- **下一步:** `|}` 表格闭合泄漏（1.29%，现最大残留）；可选 enwiki 切片做更硬头条。

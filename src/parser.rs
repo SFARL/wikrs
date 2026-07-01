@@ -409,6 +409,17 @@ fn parse_inline<'a>(tokens: &[Inline<'a>]) -> Vec<Node<'a>> {
     // re-scanning to the end each time (keeps unbalanced input like `[[a|`×N
     // linear, not O(n^2)).
     let (mut no_link, mut no_ext, mut no_bold, mut no_italic) = (false, false, false, false);
+    // Depth-matched `]]` for each `[[`, so a media/category caption that nests a
+    // `[[link]]` closes at its OUTER `]]` (dropping the whole media link) instead
+    // of the inner one — which would leak the caption tail + the outer `]]`.
+    // Normal links keep first-`]]` matching below (deep nesting stays shallow and
+    // linear); only the media-drop path reads this table. Skipped when the block
+    // has no link at all, so link-free prose pays nothing.
+    let media_close = if tokens.iter().any(|t| matches!(t, Inline::LinkOpen)) {
+        link_close_matches(tokens)
+    } else {
+        Vec::new()
+    };
     while i < tokens.len() {
         match tokens[i] {
             Inline::Text(s) => {
@@ -423,6 +434,17 @@ fn parse_inline<'a>(tokens: &[Inline<'a>]) -> Vec<Node<'a>> {
                 };
                 match found {
                     Some(close) => {
+                        // A media/category link (File:/Image:/Category:) may wrap a
+                        // nested `[[link]]` in its caption; first-`]]` matching would
+                        // stop at the INNER `]]`, leaking the caption tail + outer
+                        // `]]`. Extend to the depth-matched `]]` so make_link drops
+                        // the whole span. (`unwrap_or(close)` keeps unbalanced input
+                        // on the flat close — still linear, still dropped.)
+                        let close = if link_target_is_nonprose(tokens, i + 1) {
+                            media_close[i].unwrap_or(close)
+                        } else {
+                            close
+                        };
                         out.push(make_link(&tokens[i + 1..close]));
                         i = close + 1;
                     }
@@ -511,6 +533,35 @@ fn find(tokens: &[Inline], from: usize, target: Inline) -> Option<usize> {
         .iter()
         .position(|t| std::mem::discriminant(t) == std::mem::discriminant(&target))
         .map(|p| from + p)
+}
+
+/// For every `[[` in `tokens`, the index of its depth-matched `]]` (or `None`
+/// when unbalanced). One linear pass with an open-index stack — so even a flood
+/// of nested/unbalanced media links stays O(n): the caller looks up the close in
+/// O(1) instead of re-scanning per link.
+fn link_close_matches(tokens: &[Inline]) -> Vec<Option<usize>> {
+    let mut matched = vec![None; tokens.len()];
+    let mut open_stack: Vec<usize> = Vec::new();
+    for (idx, t) in tokens.iter().enumerate() {
+        match t {
+            Inline::LinkOpen => open_stack.push(idx),
+            Inline::LinkClose => {
+                if let Some(open) = open_stack.pop() {
+                    matched[open] = Some(idx);
+                }
+            }
+            _ => {}
+        }
+    }
+    matched
+}
+
+/// Whether the link whose inner tokens start at `start` is a non-prose
+/// media/category link. The namespace (`File:`/`Image:`/`Category:`) lives in
+/// the target, i.e. the first token, before any pipe or nested `[[`; a maximal
+/// `Text` run never splits it, so peeking that one token suffices.
+fn link_target_is_nonprose(tokens: &[Inline], start: usize) -> bool {
+    matches!(tokens.get(start), Some(Inline::Text(s)) if is_nonprose_target(s))
 }
 
 /// Build a `Link` from the tokens between `[[` and `]]` (split on the first `|`).
@@ -818,6 +869,39 @@ mod tests {
             render::plain(&parse("[[:Category:Physics|physics]]").nodes),
             "physics"
         );
+    }
+
+    #[test]
+    fn drops_media_link_with_nested_caption_link() {
+        // Real-dump bug (simplewiki "Air"; a leaked `]]` on 6.7% of pages): a
+        // File caption wrapping a nested `[[wikilink]]` made the flat first-`]]`
+        // matcher close the media link at the INNER `]]`, leaking the caption
+        // tail + the outer `]]` as literal text. The whole media link — caption
+        // and nested links — must drop cleanly (like the non-nested case).
+        assert_eq!(
+            render::plain(&parse("[[File:Fan.jpg|thumb|A [[wikt:fan|fan]] moves air.]]").nodes),
+            ""
+        );
+        // Body prose around it survives; the caption/tail and its `]]` don't leak.
+        let out = render::plain(
+            &parse("Intro.\n\n[[File:Fan.jpg|thumb|A [[wikt:fan|fan]] moves air.]]\n\nBody.").nodes,
+        );
+        assert!(
+            !out.contains("]]") && !out.contains("moves air"),
+            "leaked: {out:?}"
+        );
+        assert!(
+            out.contains("Intro.") && out.contains("Body."),
+            "lost prose: {out:?}"
+        );
+        // Two-level nesting drops whole; a normal link right after still renders.
+        let out =
+            render::plain(&parse("[[File:X.jpg|thumb|see [[Earth]]]] and [[Mars|planet]]").nodes);
+        assert!(
+            !out.contains("]]") && !out.contains("Earth"),
+            "leaked: {out:?}"
+        );
+        assert!(out.contains("planet"), "lost link: {out:?}");
     }
 
     #[test]
