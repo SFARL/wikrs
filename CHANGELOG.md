@@ -2,7 +2,7 @@
 
 Notable changes to wikrs. Loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning is SemVer.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-07-01
 
 First release: a fast, honest wikitext extraction engine.
 
