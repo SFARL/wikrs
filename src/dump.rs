@@ -52,6 +52,28 @@ pub fn open(path: &Path) -> anyhow::Result<Pages<Box<dyn BufRead>>> {
     Ok(Pages::new(reader))
 }
 
+/// Resolve an XML entity-reference *name* (the part between `&` and `;`) to its
+/// character: the five predefined XML entities plus numeric character
+/// references (`#233`, `#x41`). Anything else is ill-formed in a dump — XML has
+/// no other built-ins, and MediaWiki dumps declare no custom entities.
+fn resolve_entity(name: &str) -> Option<char> {
+    match name {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        _ => {
+            let num = name.strip_prefix('#')?;
+            let code = match num.strip_prefix(['x', 'X']) {
+                Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                None => num.parse().ok()?,
+            };
+            char::from_u32(code)
+        }
+    }
+}
+
 /// Which `<page>` child we are currently accumulating text into.
 #[derive(Default)]
 enum Field {
@@ -109,6 +131,37 @@ impl<R: BufRead> Iterator for Pages<R> {
                         }
                     }
                 }
+                // quick-xml emits entity references (`&amp;` …) as separate
+                // GeneralRef events — they never appear inside Text events. Real
+                // dumps escape every `&`/`<`/`>` in wikitext, so dropping these
+                // corrupts pages (`&lt;ref&gt;` never becomes `<ref>`). Resolve
+                // them into the current field; an unresolvable entity inside a
+                // page's title/text is ill-formed input and surfaces as an Err
+                // (refs elsewhere, e.g. siteinfo we don't consume, are skipped).
+                Ok(Event::GeneralRef(e)) => {
+                    if let Some(p) = page.as_mut() {
+                        let dest = match field {
+                            Field::Title => Some(&mut p.title),
+                            Field::Text => Some(&mut p.text),
+                            Field::Ns | Field::None => None,
+                        };
+                        if let Some(dest) = dest {
+                            let name = match e.decode() {
+                                Ok(n) => n,
+                                Err(err) => return Some(Err(err.into())),
+                            };
+                            match resolve_entity(&name) {
+                                Some(c) => dest.push(c),
+                                None => {
+                                    return Some(Err(anyhow::anyhow!(
+                                        "unresolvable XML entity `&{name};` in page {:?} (ill-formed dump)",
+                                        p.title
+                                    )))
+                                }
+                            }
+                        }
+                    }
+                }
                 Ok(Event::End(e)) => match e.name().as_ref() {
                     b"title" | b"ns" | b"text" => field = Field::None,
                     b"page" => return page.map(Ok),
@@ -152,6 +205,32 @@ mod tests {
         assert!(!pages[0].redirect);
         assert_eq!(pages[0].text, "Earth is the '''third''' planet.");
         assert!(pages[2].redirect);
+    }
+
+    #[test]
+    fn resolves_xml_entities_in_title_and_text() {
+        // Real dumps escape every `&`, `<`, `>` in wikitext. quick-xml (0.37+)
+        // emits entity references as separate GeneralRef events, NOT inside Text
+        // events — dropping them corrupts the wikitext: `&lt;ref&gt;` never
+        // becomes `<ref>`, so ref-stripping silently stops working downstream.
+        let xml = r##"<mediawiki><page><title>AT&amp;T</title><ns>0</ns>
+            <revision><text>A &amp; B &lt;ref&gt;c&lt;/ref&gt; &quot;q&quot; &#233;&#x41;</text></revision>
+        </page></mediawiki>"##;
+        let pages: Vec<Page> = Pages::new(Cursor::new(xml))
+            .collect::<anyhow::Result<_>>()
+            .unwrap();
+        assert_eq!(pages[0].title, "AT&T");
+        assert_eq!(pages[0].text, "A & B <ref>c</ref> \"q\" \u{e9}A");
+    }
+
+    #[test]
+    fn unknown_entity_in_page_is_an_error_not_a_silent_drop() {
+        // An unresolvable entity means the dump is ill-formed; surfacing an Err
+        // (instead of silently dropping bytes) is what lets the CLI fail loudly.
+        let xml = "<mediawiki><page><title>X</title><ns>0</ns>\
+            <revision><text>a &bogus; b</text></revision></page></mediawiki>";
+        let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml)).collect();
+        assert!(res.is_err(), "unknown entity must surface as an error");
     }
 
     #[test]

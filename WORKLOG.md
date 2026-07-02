@@ -601,3 +601,17 @@
 - **Benchmark:** ast ~119 MiB/s（本次冷复测，即 README 新值）。
 - **Regression?** none（纯文档/打包卫生）。
 - **遗留（已确认、转入后续 commit）:** CLI `filter_map(Result::ok)` 静默吞 dump 错误；CLI 全量 collect 非 constant-memory（实测 max RSS **1.93 GB** on 1.67 GB dump）。均已复现，按用户拍板走"真修"。
+
+---
+
+## [2026-06-30] 修 dump XML 实体静默丢失（quick-xml GeneralRef）⭐ P0
+
+- **发现（review 探针的意外收获）:** 给"CLI 吞错"写复现时，`&bogus;` 没报错而是**整个消失**——顺藤摸出真账：**合法 XML 转义（`&amp;`/`&lt;`/`&gt;`/`&quot;`）全被静默吞**。探针：`A &amp; B` → `"A  B"`、`&lt;ref&gt;cite&lt;/ref&gt;` → `"refcite/ref"`（`<ref>` 还原不了 → **ref 剥除从未在 dump 路径生效**）、`1&amp;nbsp;km` → `"1nbsp;km"`。之前真实 dump 输出里的 `"1.609344nbsp;km"`、`"3br /7br /9"` 就是它的活证据——当时误读成页面内容。
+- **为何两套指标全瞎:** `--stats` 只查括号残留（实体丢失不产生括号）；差分走 API raw wikitext、**不经 dump.rs**。真实 dump 的输出文本质量一直比报告的差，而没有任何指标能看见。
+- **根因:** quick-xml 0.37+ 把实体引用作为**独立 `Event::GeneralRef` 事件**发出（不再包含在 Text 事件里），dump.rs 的 `_ => {}` 把它们全扔了；`Text` 分支里的 `unescape` 从来没见过实体。
+- **修复:** 新增 `GeneralRef` 分支 + `resolve_entity`（五个 XML 预定义实体 + `#NN`/`#xHH` 数字引用，追加进当前 title/text 字段）；**未知实体 = ill-formed dump → `Err`**（不再静默丢字节；page 外的引用如 siteinfo 跳过不误伤）。
+- **Tests（TDD 先红后绿）:** `resolves_xml_entities_in_title_and_text`（`AT&amp;T`→`AT&T`、`&lt;ref&gt;` 还原后被正确剥除、`&quot;`/数字引用）+ `unknown_entity_in_page_is_an_error_not_a_silent_drop`。53 lib 绿、全量绿、clippy/fmt 干净、ratchet 不退（parserTests 不经 dump 路径）。
+- **真实验收（simplewiki 全量）:** `nbsp;` 伪迹 **→ 0 页**（修前普遍存在）；clean 276,183→**276,303**（+120，`<ref>` 还原后 ref 内 cite 模板被正确剥掉；比率仍 98.0%——本 bug 对括号指标近乎不可见，这正是它藏了这么久的原因）；残留 tally 持平（`{{` 0.06%→0.04%）。吞吐单核 ~145 / 多核 ~350-368 MiB/s，既往噪声带内。
+- **Benchmark:** criterion 微基准不涉 dump 路径（无变化）；端到端见上。
+- **Regression?** none。
+- **教训:** 依赖升级会改事件模型（quick-xml 0.37 的 GeneralRef 拆分），`_ => {}` 兜底分支会把这类变化静默吃掉——dump 侧此前**没有一个带实体的测试**。现在有了。
