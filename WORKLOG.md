@@ -687,3 +687,19 @@
 - **crates.io:** `wikrs` 名称**确认未被占用**（API 查询 does not exist）。
 - **Tests/Benchmark:** 纯文档,无代码改动;criterion 不涉。
 - **Regression?** none。
+
+---
+
+## [2026-07-01] 发布预备：库 API 收窄 + rustdoc（发布清单最后一个代码活）
+
+- **问题（最终 review 缺陷 #3）:** lib.rs 把全部 10 个模块 `pub` 出去——`diff`（差分 harness）、`output`（CLI 序列化）、`tokenizer`/`entities`（实现细节）全会冻进 0.1 的 semver 契约;全库零 doctest、无 missing_docs lint。
+- **Change:**
+  - **真收窄:** `tokenizer`/`entities` → `pub(crate)`（消费者仅 src 内部,grep 证实）——从公共 API 消失。
+  - **标注内部件:** `diff`/`output` 保留 `pub`（xtask/集成测试/bin 在 crate 外消费）但 `#[doc(hidden)]` + "no semver promise" 注释。
+  - **公共面定格 6 模块:** `ast`/`diag`/`dump`/`extract`/`parser`/`render`。
+  - **文档:** crate 根新写 quick-start **doctest**（parse→plain + strip,真编译真跑）;开 `#![warn(missing_docs)]` 并清零 31 处缺口（AST 字段/变体、Diagnostic 字段、Page 字段、Parsed 字段等,tokenizer 内部化后自然消掉大半）。
+- **决策依据:** 消费者地图先行——`grep` 全仓定位每个模块的 crate 外用户,有则 doc(hidden)、无则 pub(crate),不猜。
+- **Tests:** doctest +1（crate 根示例）;`cargo check --all-targets` 全编译（xtask/bench/example/fuzz 无一破）;全量 10 target 绿、ratchet 不退、fmt/clippy 干净;`cargo doc --no-deps` **0 警告**。
+- **Benchmark:** ast **~120 MiB/s**（纯可见性+文档改动,噪声内持平）。
+- **Regression?** none。
+- **发布清单状态:** 代码活清零。剩：英文化决策（TESTING/DESIGN 核心节）、WikiExtractor 公平性脚注核查、以及 Amazon 闸后的机械动作（push→CI→翻 publish→dry-run→tag→publish）。

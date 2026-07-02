@@ -17,7 +17,9 @@ use crate::tokenizer::{self, Inline};
 /// Result of a parse: the AST and any diagnostics raised.
 #[derive(Debug)]
 pub struct Parsed<'a> {
+    /// The parsed block nodes, in source order.
     pub nodes: Vec<Node<'a>>,
+    /// Everything the parser could not (or deliberately does not) handle.
     pub diagnostics: Vec<Diagnostic>,
 }
 

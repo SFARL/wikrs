@@ -19,9 +19,13 @@ use quick_xml::Reader;
 /// One page from a dump. `text` is raw wikitext.
 #[derive(Debug, Clone)]
 pub struct Page {
+    /// The page title.
     pub title: String,
+    /// MediaWiki namespace number (`0` = main/article namespace).
     pub namespace: i32,
+    /// Whether the page is a `#REDIRECT` stub.
     pub redirect: bool,
+    /// The page's raw wikitext.
     pub text: String,
 }
 
@@ -39,6 +43,7 @@ pub struct Pages<R: BufRead> {
 }
 
 impl<R: BufRead> Pages<R> {
+    /// Wrap an XML reader (already decompressed) in a page iterator.
     pub fn new(read: R) -> Self {
         Pages {
             reader: Reader::from_reader(read),

@@ -5,6 +5,7 @@
 
 use std::ops::Range;
 
+/// How bad a diagnostic is — and how honest we're being about why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     /// A genuine error inside the supported range.
@@ -18,14 +19,18 @@ pub enum Severity {
 /// One diagnostic, locatable back to the source by `span` (byte range).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
+    /// How severe (and how deliberate) the condition is.
     pub severity: Severity,
     /// Stable machine code, e.g. `"U-TEMPLATE"`.
     pub code: &'static str,
+    /// Byte range of the offending construct in the input wikitext.
     pub span: Range<usize>,
+    /// Human-readable explanation.
     pub message: String,
 }
 
 impl Diagnostic {
+    /// A construct outside the declared support range — reported, not guessed.
     pub fn unsupported(code: &'static str, span: Range<usize>, message: impl Into<String>) -> Self {
         Diagnostic {
             severity: Severity::Unsupported,
