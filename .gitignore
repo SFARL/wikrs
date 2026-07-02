@@ -34,3 +34,6 @@
 *.swp
 .idea/
 .vscode/
+
+# Local agent/skill scaffolding materialized by the harness — never publish
+.agents/

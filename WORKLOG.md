@@ -587,3 +587,17 @@
 - **Benchmark（D4 闸）:** `wikrs_ast` **无变化**（criterion vs `before`：change p=0.66>0.05，−0.77% 点估计噪声内）。~134 MiB/s 持平。
 - **Regression?** none。
 - **决策（停）:** `|}` 残留主体是 grid 表（有意 bail），**不追**——正合 [[wikrs-utable-is-mostly-template-leak]]「修模板消费，别建表格解析器」。extraction-quality 清晰收官：`]]`（+6pt）真赢、`{{…|}}`（+0.1pt）正确小补、grid 表是有意的诚实 flag。
+
+---
+
+## [2026-06-30] 发布前 review 回应：文档诚实化 + 包内容清理（无代码改动）
+
+- **背景:** 用户跑了一轮发布前 audit（publish 闸、包内容、CLI 行为、bench 漂移、文档数字）。逐条对码验证后修正如下；两条 pushback 见后。
+- **P0 包污染（修）:** `.agents/`（本会话 harness 生成的 skill 脚手架）出现在 `cargo package --list`。加入 `.gitignore`；验证包清单已干净。
+- **P1 bench 漂移（文档修 + 归因纠正）:** README 表仍写 ast ~134 MiB/s 且"faster than strip"；冷复测 ast **~119** / strip **~122** / parse_wiki_text ~306（参照系稳定 → 非机器负载）。**归因：af0c5f0 记录过的 −10% 从未落到 README 表**（README 正文自己写了 −10% trade、表格却没改，自相矛盾）；`before` baseline 在最近两个 commit **之前**就是 ~119，两个 commit 各自 criterion "No change"——**非近期回归**。表改 ~119/~122/~306，措辞改"≈ strip throughput"。
+- **P2 数字统一（修）:** ratchet 基线实际 **529** 例（533 行 − 4 注释），README 528→529、49.0%→49.1%；CHANGELOG ~40%→~49%、"1.5× faster than strip"→"≈ strip"；TESTING.md 陈旧的"~82%/40% silent 是下一目标"更新为已修后的 99.3%/0%；顺手修自己上一 commit 留下的 97.9/98.0 不一致。
+- **Pushback（两条，已说明理由）:** (1) `publish = false` **保留**——Amazon IP 闸未清，这是防误发的正确保险，翻转是真发布时刻的最后一步；(2) bench 漂移非最近提交所致（证据同上）。
+- **Tests:** 无代码改动；`cargo package --allow-dirty --list` 复核干净。
+- **Benchmark:** ast ~119 MiB/s（本次冷复测，即 README 新值）。
+- **Regression?** none（纯文档/打包卫生）。
+- **遗留（已确认、转入后续 commit）:** CLI `filter_map(Result::ok)` 静默吞 dump 错误；CLI 全量 collect 非 constant-memory（实测 max RSS **1.93 GB** on 1.67 GB dump）。均已复现，按用户拍板走"真修"。

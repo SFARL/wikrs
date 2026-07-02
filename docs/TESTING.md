@@ -45,7 +45,7 @@
   ```
   precision 是**保守下限**（~9% 缺口是 `<math>`/实体/分词噪声，不是 garbling——聚类紧、零离群）。页级 0/0/100 作为**透明度层**保留（每页都标记跳过了什么 = 和 WikiExtractor"静默出错"的对比点）。
 - **落点**：`src/diff.rs`（归一化/precision/coverage/classify/Report，零依赖、7 单测）；`xtask diff-fetch`/`diff-report`；`tests/diff_report.rs`（离线集成 smoke，CI 无网络）。
-- **采样**：`tests/diff/titles.txt`（18 篇 featured，仅页名、入库、可复现）+ `tests/diff/titles-random.txt`（25 篇随机 ns0，`cargo xtask diff-sample` 抽样并 pin）。页面内容 CC-BY-SA 运行时拉、缓存到 gitignore 的 `tests/diff/cache/`，不入库。**随机样本更诚实**：precision ~82%、**40% 静默 structural-diff**（featured 样本掩盖了——`[[File:|thumb|alt=]]`/`<ref>`/`<math>` markup 在简单页泄漏、无诊断），是下一个正确性目标。
+- **采样**：`tests/diff/titles.txt`（18 篇 featured，仅页名、入库、可复现）+ `tests/diff/titles-random.txt`（25 篇随机 ns0，`cargo xtask diff-sample` 抽样并 pin）。页面内容 CC-BY-SA 运行时拉、缓存到 gitignore 的 `tests/diff/cache/`，不入库。**随机样本更诚实**：25 页随机样本**初测** precision ~82%、40% 静默 structural-diff（featured 样本掩盖了简单页的 markup 泄漏）。**这些已修**——entity 解码 / File·Category 丢弃 / order-robust 度量 / `]]` File-caption / 多行模板碎裂 / 表格 brace 修复后，**120 页随机样本上 word-precision 99.3%、0% 静默、115/120 完全忠实**（`cargo xtask diff-report --cache target/diff-cache-random`）。真实 dump 转化率另见 README（simplewiki 全量 98.0% clean）。
 
 ### 层 3 — 安全网：fuzzing (`cargo-fuzz`)
 
