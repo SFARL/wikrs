@@ -615,3 +615,19 @@
 - **Benchmark:** criterion 微基准不涉 dump 路径（无变化）；端到端见上。
 - **Regression?** none。
 - **教训:** 依赖升级会改事件模型（quick-xml 0.37 的 GeneralRef 拆分），`_ => {}` 兜底分支会把这类变化静默吃掉——dump 侧此前**没有一个带实体的测试**。现在有了。
+
+---
+
+## [2026-06-30] CLI 真 streaming + dump 错误硬失败（review 两项 P1，用户拍板"真修"）
+
+- **问题（review 确认）:** (1) `filter_map(Result::ok)` 静默吞 dump 错误——实体修复后探针显示更糟：Err 后 iterator 状态错乱，**Beta 之后的 Gamma 也静默丢了**、仍 exit 0；(2) CLI 先 collect 全部 pages 再 collect 全部 rendered，**max RSS 1.93 GB**（1.67 GB dump）——库的 `dump` iterator 是 streaming，CLI 把它抵消了，enwiki ~20 GB 会 OOM。
+- **修复（重写 `main.rs` 主循环）:** bounded streaming 管线——顺序读一批（`BATCH_PAGES`=4096 或 `BATCH_BYTES`=32 MiB 先到为准），`into_par_iter` 并行渲染，按 dump 序写出，循环。dump 读/decode 错误经 `with_context`（含文件名 + 已读页数）**硬失败**；`--stats` 改为流式累加，输出语义逐字节不变。
+- **Tests（TDD）:** `corrupt_dump_is_a_hard_error_not_a_silent_skip`（`&bogus;` dump → exit≠0 + stderr 指明；旧码 exit 0 静默截断=红）+ `streams_articles_in_dump_order`（顺序/过滤/完整性守卫，重写前后都必须绿）。5 CLI 测试绿、全量 10 target 绿、clippy/fmt 干净、ratchet 不退。
+- **真实验收（simplewiki 全量）:**
+  - **Max RSS 1,932 MB → 96 MB（−95%，19×）**，真 constant-memory（O(batch)）；wall 还略快（5.43→4.71s，分配器压力小）。
+  - corrupt dump：`Error: reading dump …(after 1 page(s)) / Caused by: unresolvable XML entity &bogus; in page "Beta"`，**exit 1**。
+  - `--stats` 逐字节一致：pages=281799 clean=276303（98.0%）。
+  - 吞吐：单核 **~150-152**、多核 **~376-387 MiB/s**——与改前噪声带重合，streaming 零代价。
+- **Benchmark:** criterion 全部噪声内（ast ~119、strip ~120、参照 ~304）。
+- **Regression?** none（内存大赢、吞吐持平、行为守卫绿）。
+- **发布面意义:** review 的两个 P1 清零——"honest"叙事在 CLI 层不再有反例（错误必响、不静默截断），"handles Wikipedia dumps"在内存上名副其实（enwiki 全量现在可行）。CHANGELOG/README 已同步（constant-memory 表述现在是真的）。

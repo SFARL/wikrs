@@ -3,10 +3,20 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 
 use wikrs::{dump, extract, output, parser, render};
+
+/// Batch bounds for the streaming pipeline: read up to this many article pages
+/// (or this many bytes of raw wikitext, whichever fills first), render the
+/// batch in parallel, write it in dump order, repeat. Memory stays O(batch) —
+/// a 20 GB enwiki dump must never be buffered whole. 4096 pages keeps every
+/// core busy between batch boundaries; the byte cap bounds the batch when
+/// individual pages are unusually large.
+const BATCH_PAGES: usize = 4096;
+const BATCH_BYTES: usize = 32 << 20; // 32 MiB of raw wikitext
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Format {
@@ -47,29 +57,66 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Read sequentially (one decompressor), strip in parallel.
-    let pages: Vec<dump::Page> = dump::open(&cli.input)?
-        .filter_map(Result::ok)
-        .filter(dump::Page::is_article)
-        .collect();
+    // Stream the dump in bounded batches: read sequentially (one decompressor),
+    // render each batch in parallel, write in dump order. A dump read/decode
+    // error is a hard error — silently skipping pages (the old
+    // `filter_map(Result::ok)`) would truncate output with exit code 0, the
+    // exact silent failure wikrs exists to avoid.
+    let mut pages = dump::open(&cli.input)?;
+    let stdout = io::stdout();
+    let mut w = io::BufWriter::new(stdout.lock());
+    let (mut total, mut clean, mut read) = (0usize, 0usize, 0usize);
+    loop {
+        let mut batch: Vec<dump::Page> = Vec::with_capacity(BATCH_PAGES);
+        let mut bytes = 0usize;
+        for res in pages.by_ref() {
+            let page = res.with_context(|| {
+                format!(
+                    "reading dump {} (after {read} page(s))",
+                    cli.input.display()
+                )
+            })?;
+            read += 1;
+            if !page.is_article() {
+                continue;
+            }
+            bytes += page.text.len();
+            batch.push(page);
+            if batch.len() >= BATCH_PAGES || bytes >= BATCH_BYTES {
+                break;
+            }
+        }
+        if batch.is_empty() {
+            break;
+        }
 
-    let rendered: Vec<(String, String)> = pages
-        .par_iter()
-        .map(|p| {
-            let text = match cli.engine {
-                Engine::Strip => extract::strip(&p.text),
-                Engine::Ast => render::plain(&parser::parse(&p.text).nodes),
-            };
-            (p.title.clone(), text)
-        })
-        .collect();
+        let rendered: Vec<(String, String)> = batch
+            .into_par_iter()
+            .map(|p| {
+                let text = match cli.engine {
+                    Engine::Strip => extract::strip(&p.text),
+                    Engine::Ast => render::plain(&parser::parse(&p.text).nodes),
+                };
+                (p.title, text)
+            })
+            .collect();
+
+        for (title, text) in &rendered {
+            total += 1;
+            if cli.stats {
+                if extract::looks_clean(text) {
+                    clean += 1;
+                }
+            } else {
+                match cli.format {
+                    Format::Text => writeln!(w, "{text}")?,
+                    Format::Jsonl => writeln!(w, "{}", output::to_jsonl(title, text))?,
+                }
+            }
+        }
+    }
 
     if cli.stats {
-        let total = rendered.len();
-        let clean = rendered
-            .iter()
-            .filter(|(_, t)| extract::looks_clean(t))
-            .count();
         let pct = if total == 0 {
             0.0
         } else {
@@ -77,15 +124,6 @@ fn main() -> anyhow::Result<()> {
         };
         eprintln!("pages={total} clean={clean} ({pct:.1}% clean conversion)");
         return Ok(());
-    }
-
-    let stdout = io::stdout();
-    let mut w = io::BufWriter::new(stdout.lock());
-    for (title, text) in &rendered {
-        match cli.format {
-            Format::Text => writeln!(w, "{text}")?,
-            Format::Jsonl => writeln!(w, "{}", output::to_jsonl(title, text))?,
-        }
     }
     w.flush()?;
     Ok(())

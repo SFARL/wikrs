@@ -31,7 +31,9 @@ cargo build --release
 ./target/release/wikrs --input dump.xml.bz2 --stats
 ```
 
-`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted. The default **`ast`** engine (Stage 2 parser: structured, honest diagnostics, faster than the old stripper) handles real articles; pass `--engine strip` for the Stage 1 fast/lossy path.
+`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line. Both `.xml` and multistream `.xml.bz2` are accepted. The default **`ast`** engine (Stage 2 parser: structured, honest diagnostics) handles real articles; pass `--engine strip` for the Stage 1 fast/lossy path.
+
+The CLI **streams** the dump in bounded batches — constant memory (~96 MB peak on a 1.7 GB dump) regardless of dump size — and a dump read/decode error is a **hard error with a real exit code**, never a silently skipped page.
 
 ## Why is this hard? (and why that's the moat)
 

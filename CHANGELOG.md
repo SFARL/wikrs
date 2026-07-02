@@ -13,7 +13,7 @@ First release: a fast, honest wikitext extraction engine.
 
 ### Core
 - **Dump reader** (`dump`): stream `<page>` from `.xml` and multistream `.xml.bz2` at constant memory; skips redirects, filters to the main namespace.
-- **CLI** (`wikrs`): `--input`, `--format text|jsonl`, `--engine ast|strip`, `--stats`; parallel via rayon.
+- **CLI** (`wikrs`): `--input`, `--format text|jsonl`, `--engine ast|strip`, `--stats`. Streams the dump in bounded batches — constant memory (~96 MB peak on a 1.7 GB dump), parallel via rayon — and **fails loudly on dump read errors** instead of silently skipping pages.
 - **AST** (`Node<'a>`, borrow-friendly `Cow`) and **diagnostics** (`Diagnostic` / `Severity` = Error · Warning · Unsupported, with source spans).
 
 ### Quality
