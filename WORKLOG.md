@@ -645,3 +645,20 @@
 - **Benchmark:** ast **~121 MiB/s**（`closed` 一个 bool，噪声内零回归）。
 - **Regression?** none。
 - **教训:** 字节步进扫描 + `&s[i..]` 切片的组合必须证明 i 在字符边界——`update_*_depth` 系只数不切所以安全，`strip_inline_templates` 切了就中招。全库同类组合已过目仅此一处。
+- **补记:** 修复后续跑 25 分钟 coverage-guided：**26,017,780 次执行零 crash**。
+
+---
+
+## [2026-07-01] 全量 enwiki 验证：7,189,653 页 / 98.0% clean / 210 MB RSS ⭐⭐
+
+- **背景（最终 review 方向 #1）:** streaming CLI（96 MB RSS）让全量 enwiki 首次可行。下载 `enwiki-latest-pages-articles-multistream.xml.bz2`（2026-06-02 快照，**26,437,250,146 字节**校验一致），**不解压**、直接流式喂给 `--stats`，`/usr/bin/time -l` 同录内存。跑在 HEAD=1aaf011（含 fuzz 修复——700 万页里"未闭合模板+块尾多字节"几乎必然出现，晚修几小时这一跑就崩）。
+- **结果（三断言全兑现）:**
+  - **pages=7,189,653 clean=7,043,750 = 98.0%**——与 simplewiki 全量**完全一致**（98.0%）。抽取质量跨语料泛化，不是小 wiki 特调。
+  - **Max RSS 210 MB**（220,348,416 字节）：输入 ×16（26.4 GB vs 1.67 GB 未压），内存仅 ×2.2（210 vs 96 MB）——O(batch) 不是 O(dump)，constant-memory 在真实规模成立。差额来自 32 MiB 字节帽下更大的批 + enwiki 单页更大。
+  - **Wall 38.1 分钟**（2283.55s；user 2767.69s → 并行度仅 1.2）。**瓶颈 100% 是单线程 bz2 解压+XML**（一核全程钉死，渲染核吃不饱）——与预判一致。0 崩溃、0 错误、exit 0。
+- **吞吐口径（诚实）:** 26.4 GB 压缩 ÷ 38.1 min ≈ **11.6 MB/s（压缩计）** ≈ 3,150 页/秒。与 WikiExtractor 的对比数字**仍以 simplewiki 全量为准**（32×，同 harness 实测）；enwiki 上没跑 WE（预计小时级），不发未实测的对比。
+- **下一个速度台阶（已点名）:** multistream 格式本身就是几万个独立 bz2 流 + 索引，**并行解码**可把 38 分钟压到渲染瓶颈的 ~5-8 分钟。远期项。
+- **Tests:** 无代码改动（纯测量）。
+- **Benchmark:** criterion 不涉；端到端见上。
+- **Regression?** none。
+- **落点:** dump gitignored `target/realdump/enwiki-articles.xml.bz2`（26.4 GB，磁盘紧可删——`curl` 可复取）。README 已更新（状态行 + 转化率 + CLI 内存句）。
