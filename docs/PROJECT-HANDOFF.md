@@ -1,3 +1,5 @@
+> *Internal dev-history document (Chinese). For English, see [DESIGN.md](DESIGN.md) and [TESTING.md](TESTING.md).*
+
 # 项目交接：Rust wikitext 提取/解析引擎
 
 > 冷启动交接文档。决策链和结论都已压入，换环境后无需重新解释来龙去脉。

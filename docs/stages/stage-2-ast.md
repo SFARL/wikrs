@@ -1,3 +1,5 @@
+> *Internal dev-history document (Chinese). For English, see [DESIGN.md](../DESIGN.md) and [TESTING.md](../TESTING.md).*
+
 # Stage 2 — 进阶档：结构化 AST 引擎
 
 **状态:** 🛠 进行中（核心管线 + 规模验证完成，coverage 缓爬）· **日期:** 2026-06-27，快照更新 2026-07-01 · **定位:** 真正的声誉项目

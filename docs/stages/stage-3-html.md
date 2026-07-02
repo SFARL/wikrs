@@ -1,3 +1,5 @@
+> *Internal dev-history document (Chinese). For English, see [DESIGN.md](../DESIGN.md) and [TESTING.md](../TESTING.md).*
+
 # Stage 3 —（可选）AST → HTML 渲染
 
 **状态:** 未开工 · **可选** · **日期:** 2026-06-23 · **定位:** 锦上添花，非主线

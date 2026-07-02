@@ -703,3 +703,14 @@
 - **Benchmark:** ast **~120 MiB/s**（纯可见性+文档改动,噪声内持平）。
 - **Regression?** none。
 - **发布清单状态:** 代码活清零。剩：英文化决策（TESTING/DESIGN 核心节）、WikiExtractor 公平性脚注核查、以及 Amazon 闸后的机械动作（push→CI→翻 publish→dry-run→tag→publish）。
+
+---
+
+## [2026-07-01] 发布前最后两个🟡：WikiExtractor 公平性核查 + 核心文档英文化
+
+- **闸况（用户确认）:** Amazon IP 闸**已清**,全量发布授权。协议维持 MIT OR Apache-2.0（经"会不会亏"讨论确认:声誉项目,商用采用是赢不是亏;独立作者永远保留未来改道权）。
+- **公平性核查（32× 可以公开喊）:** 读 WikiExtractor 源码 + 实测双确认——它默认 `cpu_count()−1` = 本机 9 个 worker 进程,且 map/reduce 架构在 `-o -`（stdout）下照样并行;切片实测 default 1.11s vs `--processes 1` 2.44s（2.2×）。**32× 是并行对并行**,非 wikrs-并行 vs WE-单核。README 增公平性脚注。
+- **英文化（README 承诺兑现）:** `DESIGN.md`、`TESTING.md` **全文译英**（保留 §编号与 D1–D4 决策标签——代码注释/WORKLOG 均引用;顺手把 §12 的 ~22× 更新为实测 32×、§8 标注 7.4 分钟已达成、TESTING 基线表同步 enwiki 行）。`stages/`、`PROJECT-HANDOFF`、`WORKLOG` 定位为**内部开发史（中文）**,各加一行英文指路头注;README 文档表标注语言并删除"将翻译"承诺句,状态段改为"Issues and discussion welcome"。
+- **Tests/Benchmark:** 纯文档;套件在 HEAD 绿。
+- **Regression?** none。
+- **下一步:** 发布机械动作——翻 `publish`、CHANGELOG 定日期、`cargo publish --dry-run`、tag v0.1.0、push、`cargo publish`、repo 转公开。

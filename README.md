@@ -88,7 +88,7 @@ The headline metric: a **precision/coverage differential vs Parsoid** on real pa
 _Last updated: 2026-07-01_
 
 - **Tests:** green — `cargo test --all-features`
-- **⚡ vs WikiExtractor** (end-to-end, identical `bench-compare` harness): on the **full real simplewiki dump** (1.67 GB, 281,799 articles, 2026-06 snapshot, 10-core Apple Silicon) wikrs is **~32× faster** — 5.2 s / **322 MB/s** vs WikiExtractor 164 s / 10.2 MB/s. Single-core, wikrs is **~150 MiB/s** end-to-end (it parallelises across cores; WikiExtractor streaming to one stdout does not). On the original 8.3 MB *synthetic* dump the figure was ~22× — **conservative, not inflated**: tiny inputs are dominated by wikrs's process-start overhead (a 16 MB slice shows only ~5× for the same reason), so the real full-dump gap is *wider*. Reproduce: `cargo xtask bench-compare <dump.xml>` (real) or `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml` (synthetic).
+- **⚡ vs WikiExtractor** (end-to-end, identical `bench-compare` harness): on the **full real simplewiki dump** (1.67 GB, 281,799 articles, 2026-06 snapshot, 10-core Apple Silicon) wikrs is **~32× faster** — 5.2 s / **322 MB/s** vs WikiExtractor 164 s / 10.2 MB/s. Single-core, wikrs is **~150 MiB/s** end-to-end (it parallelises across cores; WikiExtractor streaming to one stdout does not). On the original 8.3 MB *synthetic* dump the figure was ~22× — **conservative, not inflated**: tiny inputs are dominated by wikrs's process-start overhead (a 16 MB slice shows only ~5× for the same reason), so the real full-dump gap is *wider*. **Fairness:** WikiExtractor ran with its **default parallelism** (`cpu_count() − 1` = 9 worker processes on the test machine; we verified its default beats `--processes 1` by ~2.2×), so this is parallel-vs-parallel on identical hardware, not wikrs-parallel vs WE-single-core. Reproduce: `cargo xtask bench-compare <dump.xml>` (real) or `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml` (synthetic).
 - **Sample-article throughput** (criterion, `benches/compare.rs`):
 
   | Implementation | Throughput | Notes |
@@ -115,16 +115,15 @@ _Last updated: 2026-07-01_
 
 | Doc | Contents |
 |-----|----------|
-| [docs/DESIGN.md](docs/DESIGN.md) | Architecture, module layout, I/O contracts, error philosophy, non-goals |
-| [docs/TESTING.md](docs/TESTING.md) | Four-layer test strategy + benchmarks |
-| [docs/stages/](docs/stages/) | Per-stage checkpoints and tasks |
-| [docs/PROJECT-HANDOFF.md](docs/PROJECT-HANDOFF.md) | Strategic context & decision log |
-
-> Design docs are currently written in Chinese; they'll be translated as the project approaches a public release.
+| [docs/DESIGN.md](docs/DESIGN.md) | Architecture, module layout, I/O contracts, error philosophy, non-goals (English) |
+| [docs/TESTING.md](docs/TESTING.md) | Four-layer test strategy + benchmarks (English) |
+| [docs/stages/](docs/stages/) | Per-stage checkpoints and tasks *(internal dev history, Chinese)* |
+| [docs/PROJECT-HANDOFF.md](docs/PROJECT-HANDOFF.md) | Strategic context & decision log *(internal dev history, Chinese)* |
+| [WORKLOG.md](WORKLOG.md) | Per-change evidence log — every fix with its measured before/after *(internal dev history, Chinese)* |
 
 ## Status & contributing
 
-Pre-release and moving fast — the design docs above are the source of truth. No stability guarantees yet. Issues and discussion welcome once the repo goes public.
+Pre-1.0 and moving fast — the design docs above are the source of truth. No API stability guarantees yet. Issues and discussion welcome.
 
 ## License
 

@@ -1,3 +1,5 @@
+> *Internal dev-history document (Chinese). For English, see [DESIGN.md](../DESIGN.md) and [TESTING.md](../TESTING.md).*
+
 # Stage 1 — 保底档：wikitext → plain text 提取器
 
 **状态:** ✅ 完成（0.1.0-dev，保留为 `--engine strip` 路径）· **日期:** 2026-06-23，快照回填 2026-07-01 · **定位:** Rust 版 WikiExtractor，卖点是**速度**
