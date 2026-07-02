@@ -1,6 +1,8 @@
 # Stage 1 — 保底档：wikitext → plain text 提取器
 
-**状态:** 未开工 · **日期:** 2026-06-23 · **定位:** Rust 版 WikiExtractor，卖点是**速度**
+**状态:** ✅ 完成（0.1.0-dev，保留为 `--engine strip` 路径）· **日期:** 2026-06-23，快照回填 2026-07-01 · **定位:** Rust 版 WikiExtractor，卖点是**速度**
+
+> **完成快照:** strip 引擎 ~122 MiB/s；端到端 vs WikiExtractor **32×**（全量 simplewiki 实测，同 harness）；parserTests 残留标记转化率 98.1%。Stage 2 的 AST 引擎已成为 CLI 默认，本层保留为 `--engine strip` 快速/有损路径。逐条证据见 [WORKLOG.md](../../WORKLOG.md)。
 
 > 先把这层做出来拿第一波反馈，再往上叠。即使解析质量只和 WikiExtractor 打平，光速度就有人用、能拿 star。
 > 设计背景见 [../DESIGN.md](../DESIGN.md) §4–§6；测试见 [../TESTING.md](../TESTING.md)。

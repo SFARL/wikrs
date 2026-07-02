@@ -1,6 +1,13 @@
 # wikrs 设计文档 (Design Doc)
 
-**状态:** Draft · **日期:** 2026-06-23 · **工作名:** `wikrs`（命名未锁定，见 §9）
+**状态:** Draft · **日期:** 2026-06-23 · **工作名:** `wikrs`（crates.io 名称已确认可用，2026-07-01）
+
+> **⚠️ 现状快照（2026-07-01）——本文写于开工前，与正文有出入处以此为准：**
+> Stage 1 ✅ 完成（保留为 `--engine strip`）；**Stage 2 AST 引擎已是 CLI 默认**（parserTests 零诊断覆盖 49.1%，差分 99.3% word-precision / 0% 静默）。
+> `dump` 模块新增：XML 实体（GeneralRef）处理、**multistream 并行解码**（`open_multistream` + `--index`）。
+> CLI：有界批流式（O(batch) 内存）、dump 错误硬失败。
+> **规模验证：全量 enwiki 7,189,653 页 98.0% clean / 7.4 分钟 / 零崩溃（5.1× via `--index`）。**
+> 当前架构真相以 [WORKLOG.md](../WORKLOG.md)（逐变更证据）与 README 记分牌为准；本文其余部分是立项设计，保留作决策背景。
 
 ---
 

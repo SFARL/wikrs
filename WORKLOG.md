@@ -677,3 +677,13 @@
 - **Benchmark:** criterion 不涉（解码路径不在微基准）；端到端见上。
 - **Regression?** none（顺序路径原样保留为默认；`--index` 纯增量）。
 - **下一瓶颈（如再追速度）:** 单线程 XML 解析线程成为新长杆（decode workers 会等它）——再往上要么并行 XML 分片，要么把 `Pages` 下推到 worker 内（每流独立 parse），后者改动大、收益 ~2×,先不动。
+
+---
+
+## [2026-07-01] 文档刷新 + 发布差距盘点（决策：速度线到此收官）
+
+- **决策（用户拍板）:** **不追 per-stream XML 并行的下一个 ~2×**（7.4 → 估 3-4 分钟）——需要把 `Pages` 下推进 worker、错误语义重梳,架构手术级改动;7.4 分钟的头条已够硬,边际不值。速度线收官。
+- **文档刷新（对齐现状）:** `stages/stage-1` 状态 未开工→✅ 完成（含完成快照）;`stages/stage-2` 加 2026-07-01 里程碑快照、528/49.0%→529/49.1%、直方图标注快照日期;`TESTING.md` 覆盖率 49.1%、WikiExtractor 行更新为全量 simplewiki 32×（注明合成 22× 的小输入偏差）、对比基线表**新增"真实 dump 全量验证"行**（enwiki 98.0%/7.4min 及其挖出的三个修复）;`DESIGN.md` 顶部加"现状快照"批注（正文保留作立项背景）+ 工作名标注 crates.io 可用。
+- **crates.io:** `wikrs` 名称**确认未被占用**（API 查询 does not exist）。
+- **Tests/Benchmark:** 纯文档,无代码改动;criterion 不涉。
+- **Regression?** none。

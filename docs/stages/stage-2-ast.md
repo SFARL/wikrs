@@ -1,6 +1,8 @@
 # Stage 2 — 进阶档：结构化 AST 引擎
 
-**状态:** 🛠 进行中 · **日期:** 2026-06-27 · **定位:** 真正的声誉项目
+**状态:** 🛠 进行中（核心管线 + 规模验证完成，coverage 缓爬）· **日期:** 2026-06-27，快照更新 2026-07-01 · **定位:** 真正的声誉项目
+
+> **2026-07-01 里程碑快照:** 差分（120 随机页）word-precision **99.3% / 0% 静默 / 115-of-120 完全忠实**；**全量 enwiki 验证 7,189,653 页 98.0% clean、7.4 分钟**（`--index` 并行 multistream 解码，5.1×）、零崩溃；CLI 有界流式（O(batch) 内存）+ dump 错误硬失败；dump XML 实体修复（quick-xml GeneralRef 静默丢失）；parse 全路径 fuzz target（首小时抓到并修掉 UTF-8 切片 panic，26M 次执行零 crash）。逐条见 [WORKLOG.md](../../WORKLOG.md)。
 
 > 产出结构化 AST，保留链接/结构，对处理不了的输入**报警而非静默丢弃**。
 > 这是 D2（诚实划界）的主战场。设计见 [../DESIGN.md](../DESIGN.md) §3、§7；测试见 [../TESTING.md](../TESTING.md)。
@@ -14,7 +16,7 @@
 - **支持子集（零诊断 = 完全支持）**：段落、标题（`==`）、粗/斜体、内链、外链、flat/嵌套/定义列表、预格式、简单表格、`<ref>`/nowiki/注释、行内 HTML 格式标签、表现型 HTML 容器（`<div>`/`<center>`/`<blockquote>`/`<p>`）、显示型转写标签（`<noinclude>`/`<onlyinclude>`）、HTML 列表（`<ul>`/`<ol>`/`<li>`）。
 - **模板 `{{…}}` → `W-TEMPLATE`（Warning，丢弃留正文，非 Unsupported）**：刻意不展开（D4 护城河），所以**不计入"完全支持"**。
 - **范围外 → `Unsupported` + Diagnostic（保留原文 span，不假装）**：HTML 表格 / test 扩展标签 / `<includeonly>`（U-HTML）、wikitext 表格 `{|`（U-TABLE）、不规则列表嵌套（U-LIST）、预格式边角（U-PRE）。
-- **parserTests 覆盖率**：**49.0%（528/1077）** 零诊断完全支持 —— Stage 2 核心追踪数（见 README 记分牌 + `cargo test --test parser_tests stage2_coverage_rate`）。当前直方图：`W-TEMPLATE 391 / U-HTML 139 / U-TABLE 56 / U-LIST 51 / U-PRE 14`。
+- **parserTests 覆盖率**：**49.1%（529/1077）** 零诊断完全支持 —— Stage 2 核心追踪数（见 README 记分牌 + `cargo test --test parser_tests stage2_coverage_rate`）。直方图（2026-06-27 快照）：`W-TEMPLATE 391 / U-HTML 139 / U-TABLE 56 / U-LIST 51 / U-PRE 14`。
 - **诚实天花板**：~49% 是**不展开模板**前提下的干净 chipping 上限——剩下的 W-TEMPLATE 是刻意丢弃，U-HTML/U-TABLE/U-LIST/U-PRE 多是 HTML 表格 + 误报 + 模板 fostering 边角，不是干净可拿的。**所以覆盖率不再是该追的指标**，重心已转向差分"三个数字"（见 Task 7）。
 
 **实际模块**：`src/ast.rs`、`src/tokenizer.rs`、`src/parser.rs`、`src/diag.rs`、`src/render.rs`、`src/diff.rs`（层 2 差分核心）。

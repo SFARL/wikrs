@@ -86,9 +86,10 @@
 
 | 基线 | 是什么 | 怎么用 | 状态 |
 |------|--------|--------|------|
-| **MediaWiki `parserTests.txt`** | 正确性 oracle（wikitext→期望 HTML），**GPL** | `cargo xtask fetch-parser-tests` 拉取（不入库）→ `cargo test --test parser_tests` | ✅ 1077 例已加载；**Stage 2 零诊断覆盖率 49.0%**（`stage2_coverage_rate`）；逐例 HTML 一致性待 `render::html` |
+| **MediaWiki `parserTests.txt`** | 正确性 oracle（wikitext→期望 HTML），**GPL** | `cargo xtask fetch-parser-tests` 拉取（不入库）→ `cargo test --test parser_tests` | ✅ 1077 例已加载；**Stage 2 零诊断覆盖率 49.1%**（`stage2_coverage_rate`）；逐例 HTML 一致性待 `render::html` |
+| **真实 dump 全量验证** | 规模层：真实异构语料上的转化率/内存/吞吐（`--stats` 残留标记 floor） | 下载 dump → `wikrs --input <dump.xml.bz2> [--index <ms-index>] --stats` | ✅ **全量 enwiki 7,189,653 页 98.0% clean、7.4 min（`--index` 并行）/ 38 min（单流）、零崩溃**；全量 simplewiki 同为 98.0%（跨语料一致）。挖出并修掉：`]]` File-caption 泄漏、`{{…\|}}` 表格碎裂、dump 实体静默丢失 |
 | **`parse_wiki_text`** | 最认真的民间 Rust 解析器（0.1.5/2018，停更），速度基线 | `cargo bench --bench compare`（dev-dependency，**不进发布物**） | ✅ 样例 ~319 MiB/s；与 `wikrs_strip`（~118）同组 |
-| **WikiExtractor** | Python 事实标准提取器，速度+行为基线 | `tools/wikiextractor/setup.sh`（venv，**pin Python 3.10**）→ `cargo xtask bench-compare <dump>` | ✅ 端到端 8.3 MB dump：**wikrs ~22× 更快** |
+| **WikiExtractor** | Python 事实标准提取器，速度+行为基线 | `tools/wikiextractor/setup.sh`（venv，**pin Python 3.10**）→ `cargo xtask bench-compare <dump>` | ✅ 全量真实 simplewiki（1.67 GB）：**wikrs ~32× 更快**（322 vs 10.2 MB/s；8.3 MB 合成 dump 为 ~22×——小输入被 wikrs 启动开销压低，见 WORKLOG 2026-06-30） |
 | **Bliki**（Java，via XWiki） | mature 的 wikitext→HTML 引擎（含**模板展开**），上游已弃 | `tools/bliki/setup.sh`（JDK + coursier 取 jar）→ `cargo xtask bench-bliki` | ✅ 样例 ~**0.4 MB/s**（wikrs strip ~118，**约 300× 差距**；它做的多但慢得多） |
 
 > `parse_wiki_text` / WikiExtractor / **Bliki** 都是 **dev / 外部对比**，不进 wikrs 发布物，不沾它们的 license（Bliki 的 jar + 编译产物 gitignore，不入库）。parserTests 是 GPL，故只在测试时下载、不 vendor（[DESIGN.md](DESIGN.md) §11、前人对比见 §12）。
