@@ -40,6 +40,12 @@ struct Cli {
     #[arg(long)]
     input: PathBuf,
 
+    /// Companion multistream index (`…-multistream-index.txt[.bz2]`). Enables
+    /// parallel bz2 decoding of a multistream dump — several times faster on
+    /// multi-core, byte-identical output.
+    #[arg(long)]
+    index: Option<PathBuf>,
+
     /// Output format.
     #[arg(long, value_enum, default_value_t = Format::Text)]
     format: Format,
@@ -62,7 +68,10 @@ fn main() -> anyhow::Result<()> {
     // error is a hard error — silently skipping pages (the old
     // `filter_map(Result::ok)`) would truncate output with exit code 0, the
     // exact silent failure wikrs exists to avoid.
-    let mut pages = dump::open(&cli.input)?;
+    let mut pages = match &cli.index {
+        Some(index) => dump::open_multistream(&cli.input, index)?,
+        None => dump::open(&cli.input)?,
+    };
     let stdout = io::stdout();
     let mut w = io::BufWriter::new(stdout.lock());
     let (mut total, mut clean, mut read) = (0usize, 0usize, 0usize);

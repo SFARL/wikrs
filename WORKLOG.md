@@ -662,3 +662,18 @@
 - **Benchmark:** criterion 不涉；端到端见上。
 - **Regression?** none。
 - **落点:** dump gitignored `target/realdump/enwiki-articles.xml.bz2`（26.4 GB，磁盘紧可删——`curl` 可复取）。README 已更新（状态行 + 转化率 + CLI 内存句）。
+
+---
+
+## [2026-07-01] 并行 multistream 解码：enwiki 38 min → 7.4 min（5.1×）⭐⭐
+
+- **背景（review 远期项，enwiki 跑完点名的瓶颈）:** 38 分钟里 bz2 解压+XML 单线程钉死一核（user/real=1.2）。multistream 格式**本来就是**几万个独立 bz2 流（每 ~100 页一个）+ 官方索引（`offset:pageid:title`）——并行解码是它的设计用途。
+- **Change:** `dump.rs` 新增 `open_multistream(dump, index)`：`multistream_ranges` 解析索引成流字节区间（含索引不列的头部流和尾流；去重、单调校验、越界即 bail"拿错索引"）；`ParallelBzReader: Read`——N 个 worker（`available_parallelism`−2，clamp [2,12]）各自 `File::open`+seek+`MultiBzDecoder` 解各自流区间，`sync_channel(2×threads)` 回传，读端按序重组（乱序暂存 map，容量被通道界住）。**纯 std**（thread + mpsc），零新依赖；`Pages` 迭代器完全不动——并行读出的字节流与顺序路径逐字节一致。worker 出错 → `io::Error` 上浮 → CLI 硬失败（不静默丢 100 页）；worker 早退 → recv Err → 显式报错不悬挂。CLI 加 `--index`（可选，给了就并行）。
+- **Tests（TDD 先红后绿）:** `parallel_multistream_matches_sequential`（24 流×3 页、变长 body 逼真乱序，并行 vs 顺序逐页比对 title/text/ns + 实体过并行路径）+ `corrupt_multistream_chunk_is_an_error`（中段流损坏 → Err 非跳过）。fixture 用 `bzip2::write::BzEncoder` 现场造多流 dump + 带重复 offset/冒号 title 的索引。56 lib 绿、全量 10 target 绿、clippy/fmt 干净、ratchet 不退。
+- **真实验收:**
+  - **simplewiki-multistream（379 MB）:** 顺序 33.05s → 并行 **6.70s（4.9×）**，stats 行逐字一致，RSS 212 MB。
+  - **enwiki 全量（26.4 GB，7,189,653 页）:** **2283.6s → 446.4s = 7.44 分钟（5.1×）**，`pages=7189653 clean=7043750 (98.0%)` 与顺序**完全一致**，0 崩溃。并行度 user/real **1.2 → 7.2**。
+  - **内存（诚实）:** 并行峰值 **558 MB**（vs 顺序 210 MB）——2×threads 在途 chunk + 重组缓冲，仍是 **O(threads×chunk) 有界**、非 O(dump)；换 5.1× 值得，两个数字都进 README。
+- **Benchmark:** criterion 不涉（解码路径不在微基准）；端到端见上。
+- **Regression?** none（顺序路径原样保留为默认；`--index` 纯增量）。
+- **下一瓶颈（如再追速度）:** 单线程 XML 解析线程成为新长杆（decode workers 会等它）——再往上要么并行 XML 分片，要么把 `Pages` 下推到 worker 内（每流独立 parse），后者改动大、收益 ~2×,先不动。
