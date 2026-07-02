@@ -714,3 +714,17 @@
 - **Tests/Benchmark:** 纯文档;套件在 HEAD 绿。
 - **Regression?** none。
 - **下一步:** 发布机械动作——翻 `publish`、CHANGELOG 定日期、`cargo publish --dry-run`、tag v0.1.0、push、`cargo publish`、repo 转公开。
+
+---
+
+## [2026-07-02] v0.1.0 全线发布 + 发布后 review → v0.1.1 补丁
+
+- **v0.1.0 上线（三线齐发）:** crates.io（用户 `cargo publish`,API 验证 live）、GitHub 公开 + Release tag、MediaWiki [Alternative parsers] 名录词条（按该表实际格式排版;"Complete implementation" 诚实填 `{{no}}`——完整度谦虚一格让其余数字更可信,拒绝了 almost 的提议）。r/rust 与 HN Show HN 的发帖稿已备好待用户择时发。
+- **发布后 review（用户跑的第二轮 audit）→ 逐条验证后修:**
+  - **P0 澄清（归因纠正）:** dry-run 的 `0.1.0 already exists` 警告**不是缺陷**——当前树与已发布版完全一致,警告是预期;但 P1/P2 修复构成新内容 → 按补丁版流程 bump **0.1.1**。
+  - **P1（真,我漏的）:** README 状态行仍写 "Not yet on crates.io"、路线图仍写 "unreleased"——crate 已 live,已改为 crates.io 徽标句 + `cargo install wikrs`/`cargo add wikrs`,Usage 段补安装路径。
+  - **P2a（真）:** README 引用被 `exclude` 的 `scripts/bench.sh` 和 `WORKLOG.md`——crates.io 包内断。bench 指引改 `cargo bench --bench compare` 为主,WORKLOG 链接改 GitHub 绝对地址并标注 repo-only。
+  - **P2b（真,补覆盖）:** `--index` 只有 dump 层单测、无 CLI 端到端。新增 `index_flag_parallel_decode_matches_sequential`（tests/cli.rs 内自建 3 流 multistream fixture + 索引,过真实二进制跑两遍,断言 **stdout 逐字节一致** + 6 篇按序）。
+- **Tests:** 6 CLI 测试绿、全量 10 target 绿、fmt/clippy 干净、ratchet 不退;`cargo publish --dry-run` @0.1.1 干净（54 文件 / 122.2 KiB）。
+- **Benchmark:** 无代码改动;criterion 不涉。
+- **Regression?** none。

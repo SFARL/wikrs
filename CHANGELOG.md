@@ -2,6 +2,13 @@
 
 Notable changes to wikrs. Loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning is SemVer.
 
+## [0.1.1] — 2026-07-02
+
+Docs-and-tests patch; no code changes.
+
+- README: release status corrected (the crate **is** on crates.io — `cargo install wikrs` / `cargo add wikrs`); benchmark instructions now use `cargo bench --bench compare` (the `scripts/` directory is repo-only, excluded from the crate); WORKLOG link made absolute for the crates.io README rendering.
+- Tests: new end-to-end CLI test for `--index` — parallel multistream decoding must produce byte-identical output to the sequential path through the real binary.
+
 ## [0.1.0] — 2026-07-01
 
 First release: a fast, honest wikitext extraction engine.

@@ -2,7 +2,7 @@
 
 **Fast, honest wikitext extraction and parsing — in Rust.**
 
-> **Status: 🚧 Stage 2 engine is the default.** wikitext → clean text (or a structured AST) with **honest diagnostics**, ~32× WikiExtractor, CLI, tested — **validated on the full English Wikipedia** (7.19M articles, 98.0% clean conversion, **7.4 minutes** on a laptop with parallel multistream decoding). ~49% of MediaWiki parserTests parse with zero diagnostics, climbing. Not yet on crates.io.
+> **Status: 🚧 Stage 2 engine is the default.** wikitext → clean text (or a structured AST) with **honest diagnostics**, ~32× WikiExtractor, CLI, tested — **validated on the full English Wikipedia** (7.19M articles, 98.0% clean conversion, **7.4 minutes** on a laptop with parallel multistream decoding). ~49% of MediaWiki parserTests parse with zero diagnostics, climbing. **On [crates.io](https://crates.io/crates/wikrs)** — `cargo install wikrs` (CLI) or `cargo add wikrs` (library).
 
 ---
 
@@ -19,7 +19,7 @@ The de-facto tool for that, [WikiExtractor](https://github.com/attardi/wikiextra
 
 ## Usage
 
-Stage 1 (the extractor) works today. From source:
+Install from crates.io (`cargo install wikrs`) or build from source:
 
 ```bash
 cargo build --release
@@ -75,7 +75,7 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 
 | Stage | What | Status |
 |------:|------|--------|
-| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (0.1.0, unreleased) |
+| **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (shipped in 0.1.0) |
 | **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~49% coverage; **now the CLI default**) |
 | **3** | *(optional)* AST → HTML rendering | 💤 later |
 
@@ -99,7 +99,7 @@ _Last updated: 2026-07-01_
 
   > The Stage 2 **AST path** (parse → plain text) runs at **roughly the same throughput as the Stage 1 `strip`** while producing both text **and** diagnostics — the af0c5f0 DoS-robustness fix traded ~10% AST throughput for linear-on-adversarial-input safety, which is why it lands on par with strip rather than ahead of it. It **does not expand templates** — it drops them with a `W-TEMPLATE` warning and keeps the surrounding prose. Expanding templates (à la Bliki) would mean a Lua/Scribunto engine and ~2 orders of magnitude slower (Bliki runs at ~0.4 MB/s) — surrendering the one advantage wikrs has. So: honest drop + flag, keep the speed.
 
-  Run it yourself: `scripts/bench.sh`.
+  Run it yourself: `cargo bench --bench compare` (or `scripts/bench.sh` in the repo, which wraps it with a recordable summary).
 - **Conversion rate (residual-markup floor):** on the **full English Wikipedia** (enwiki 2026-06, **7,189,653 articles**, 26.4 GB `.bz2` streamed whole) **98.0% of pages convert clean** — no leaked `{{`/`[[`/`{|` markup in the output (`wikrs --input dump.xml.bz2 --stats`; 7.4 min with `--index` parallel decoding, 38 min single-stream; zero crashes). The full **simplewiki** dump (281,799 articles) measures an identical **98.0%**, so the rate generalizes across corpora rather than being tuned to one wiki. On the 1,077 synthetic parserTests cases it's **98.1%** (`cargo test --test parser_tests stage1_conversion_rate`). This is a *leniency floor* — it catches markup that **leaked**, not correctness-vs-Parsoid (that's the Stage 2 differential below). Fixing the dominant **`]]`** leak — File/image captions with a nested `[[wikilink]]`, where flat matching closed the media link at the *inner* `]]` and leaked the caption tail + outer `]]` — plus a brace-aware table-depth counter (so a `{{frac|1|12|}}` in a cell no longer fragments the table) took clean conversion from 91.9% to **98.0%** (measured on simplewiki, before the enwiki run). The residual is led by **`|}`** (1.2%) — overwhelmingly colspan/rowspan **grid tables that wikrs deliberately flags** (`U-TABLE`) rather than silently flatten, not corruption.
 - **Stage 2 parser coverage** (parserTests, 1077 cases): **49.1%** parse with **zero diagnostics** — fully inside the engine's declared support range (paragraphs, headings, bold/italic, internal + external links, flat, nested & definition lists, preformatted blocks, simple tables, refs/nowiki/comments, inline HTML formatting tags, presentational HTML containers `<div>`/`<center>`/`<blockquote>`/`<p>`, shown transclusion tags `<noinclude>`/`<onlyinclude>`, and HTML lists `<ul>`/`<ol>`/`<li>` unwrapped to their text). Inline templates are **dropped with a `W-TEMPLATE` warning** (prose kept, honestly flagged → *not* counted as fully supported). Track: `cargo test --test parser_tests stage2_coverage_rate`.
 - **Stage 2 differential — the "three numbers"** (layer 2 of [docs/TESTING.md](docs/TESTING.md); the headline Stage-2 DoD): wikrs's extracted prose vs **Parsoid's** rendered HTML over a fixed, committed sample of real pages. Seed run (**18 featured-class articles**, fetched 2026-06-27):
@@ -119,7 +119,7 @@ _Last updated: 2026-07-01_
 | [docs/TESTING.md](docs/TESTING.md) | Four-layer test strategy + benchmarks (English) |
 | [docs/stages/](docs/stages/) | Per-stage checkpoints and tasks *(internal dev history, Chinese)* |
 | [docs/PROJECT-HANDOFF.md](docs/PROJECT-HANDOFF.md) | Strategic context & decision log *(internal dev history, Chinese)* |
-| [WORKLOG.md](WORKLOG.md) | Per-change evidence log — every fix with its measured before/after *(internal dev history, Chinese)* |
+| [WORKLOG.md](https://github.com/SFARL/wikrs/blob/main/WORKLOG.md) | Per-change evidence log — every fix with its measured before/after *(internal dev history, Chinese; repo only, not in the crate)* |
 
 ## Status & contributing
 
