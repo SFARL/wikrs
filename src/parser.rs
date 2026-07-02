@@ -660,6 +660,7 @@ fn strip_inline_templates(s: &str) -> Cow<'_, str> {
         if b[i] == b'{' && b[i + 1] == b'{' {
             out.push_str(&s[seg..i]);
             let mut depth = 0usize;
+            let mut closed = false;
             while i + 1 < b.len() {
                 if b[i] == b'{' && b[i + 1] == b'{' {
                     depth += 1;
@@ -668,11 +669,19 @@ fn strip_inline_templates(s: &str) -> Cow<'_, str> {
                     depth -= 1;
                     i += 2;
                     if depth == 0 {
+                        closed = true;
                         break;
                     }
                 } else {
                     i += 1;
                 }
+            }
+            // An unclosed `{{` consumes to end of block (mirrors blocks() and
+            // the tokenizer). This also keeps `seg` on a char boundary: the +1
+            // byte-stepping above can otherwise stop INSIDE a trailing
+            // multibyte char and the `s[seg..]` below would panic (fuzz find).
+            if !closed {
+                i = b.len();
             }
             seg = i;
         } else {
@@ -872,6 +881,30 @@ mod tests {
             render::plain(&parse("[[:Category:Physics|physics]]").nodes),
             "physics"
         );
+    }
+
+    #[test]
+    fn unclosed_template_with_trailing_multibyte_does_not_panic() {
+        // Fuzz crash (parse target, first hour): an unclosed `{{` runs the
+        // strip_inline_templates scanner to len-1, which can sit INSIDE a
+        // multibyte char (`²`) → byte-slice panic. Correct semantics: an
+        // unclosed template consumes to end of block (mirrors blocks()/the
+        // tokenizer), never leaving a mid-char index.
+        // minimal crash repro: 2-byte char right at the end — must not panic,
+        // and the unclosed template consumes to end of block.
+        assert_eq!(strip_inline_templates("{{a²"), "");
+        assert_eq!(
+            strip_inline_templates("{{Infobox\n| mass = 5.97e24 kg ²"),
+            ""
+        );
+        // a properly closed template still strips exactly, tail intact
+        assert_eq!(strip_inline_templates("{{t|x}} 8.87 m/s²"), " 8.87 m/s²");
+        // end-to-end: the crashing shape parses without panicking, and the
+        // unexpanded template is flagged (W-TEMPLATE), not silent. (The
+        // tokenizer's unclosed-`{{` degrade-to-literal render behavior is
+        // pre-existing and out of scope here.)
+        let p = parse("{{a²");
+        assert!(p.diagnostics.iter().any(|d| d.code == "W-TEMPLATE"));
     }
 
     #[test]

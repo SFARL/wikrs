@@ -631,3 +631,17 @@
 - **Benchmark:** criterion 全部噪声内（ast ~119、strip ~120、参照 ~304）。
 - **Regression?** none（内存大赢、吞吐持平、行为守卫绿）。
 - **发布面意义:** review 的两个 P1 清零——"honest"叙事在 CLI 层不再有反例（错误必响、不静默截断），"handles Wikipedia dumps"在内存上名副其实（enwiki 全量现在可行）。CHANGELOG/README 已同步（constant-memory 表述现在是真的）。
+
+---
+
+## [2026-07-01] parse() fuzz target + 首小时抓到的 UTF-8 切片 panic ⭐
+
+- **背景（最终 review 缺陷 #2）:** fuzz 只覆盖 strip，而 **parse 是 CLI 默认引擎**、还出过三个 O(n²)。手写对抗用例能抓的早抓完，coverage-guided 才能抓下一个。
+- **Change (1) — 新 fuzz target:** `fuzz_targets/parse.rs` 覆盖默认引擎**全路径**（`parse` → `render::plain`，不只 parse）；seed corpus 4 个（样例文章 + 表格/嵌套 media/混合构造）。nightly + cargo-fuzz 0.13.2。
+- **战果（冒烟 60 秒即中）:** `parser.rs:682` **UTF-8 字节切片 panic**——`strip_inline_templates` 消费**未闭合 `{{`** 时 +1 字节步进，在 `i+1≥len` 退出可停在**多字节字符中间**（fuzzer 变异样例文章的 `m/s²` 命中），`seg=i` 后 `&s[seg..]` 崩。最小复现 `parse("{{a²")`。**CLI 可达**：真实页面"未闭合模板 + 块尾多字节字符"即触发（simplewiki 28 万页侥幸没踩，enwiki 700 万页大概率有——幸好在 enwiki 全量跑之前修了）。
+- **Change (2) — 修复:** 加 `closed` 标记：模板未闭合 → **吞到块尾**（`i = b.len()`，与 `blocks()`/tokenizer 语义一致——之前停在最后一字节本就是意外行为），`seg` 永在字符边界。
+- **范围澄清:** render 路径上未闭合 `{{` 以字面文本泄漏 + W-TEMPLATE flag 是**预先存在**的 tokenizer degrade 行为（被标记、非静默、`--stats` 里 0.04% `{{` 残留即此类），另案不捆。
+- **Tests（TDD 先红后绿）:** `unclosed_template_with_trailing_multibyte_does_not_panic`（最小 `{{a²` + Infobox 形 + 闭合模板对照 + e2e W-TEMPLATE 断言）。54 lib 绿、全量 10 target 绿、clippy/fmt 干净、ratchet 不退；原 crash 输入 fuzzer 重放通过；再挂 25 分钟 fuzz 续找下一个。
+- **Benchmark:** ast **~121 MiB/s**（`closed` 一个 bool，噪声内零回归）。
+- **Regression?** none。
+- **教训:** 字节步进扫描 + `&s[i..]` 切片的组合必须证明 i 在字符边界——`update_*_depth` 系只数不切所以安全，`strip_inline_templates` 切了就中招。全库同类组合已过目仅此一处。
