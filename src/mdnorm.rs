@@ -71,10 +71,12 @@ pub enum NfInline {
     },
 }
 
-/// The pinned internal-link href rule (same contract as the sections era):
-/// spaces → `_`, RFC 3986 path charset kept, the rest percent-encoded, `./`
-/// prefix forecloses scheme injection. External targets (tokenizer-vetted
-/// schemes) pass through.
+/// The pinned internal-link href rule: entities decoded first (MediaWiki
+/// title semantics — `[[WW&nbsp;II]]` targets "WW II"), spaces → `_`,
+/// RFC 3986 path charset kept **except `&`** (percent-encoded so a markdown
+/// destination can never be re-read as an HTML entity), the rest
+/// percent-encoded, `./` prefix forecloses scheme injection. External targets
+/// (tokenizer-vetted schemes) pass through.
 pub fn md_href(target: &str) -> String {
     if ["http://", "https://", "ftp://", "mailto:", "//"]
         .iter()
@@ -82,14 +84,15 @@ pub fn md_href(target: &str) -> String {
     {
         return target.to_string();
     }
-    let mut href = String::with_capacity(target.len() + 2);
+    let decoded = crate::entities::decode(target);
+    let mut href = String::with_capacity(decoded.len() + 2);
     href.push_str("./");
-    for &b in target.as_bytes() {
+    for &b in decoded.as_bytes() {
         match b {
             b' ' => href.push('_'),
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => href.push(b as char),
-            b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+'
-            | b',' | b';' | b'=' | b':' | b'@' | b'/' => href.push(b as char),
+            b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'\'' | b'(' | b')' | b'*' | b'+' | b','
+            | b';' | b'=' | b':' | b'@' | b'/' => href.push(b as char),
             _ => href.push_str(&format!("%{b:02X}")),
         }
     }
@@ -100,7 +103,8 @@ pub fn md_href(target: &str) -> String {
 /// drop empties. Both sides call this — it IS the declared inline
 /// normalization.
 pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
-    let mut flat: Vec<NfInline> = inlines
+    // 1. collapse whitespace inside runs; recurse into link labels.
+    let flat: Vec<NfInline> = inlines
         .into_iter()
         .map(|i| match i {
             NfInline::Run { text, bold, italic } => NfInline::Run {
@@ -114,8 +118,38 @@ pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
             },
         })
         .collect();
-    let mut merged: Vec<NfInline> = Vec::with_capacity(flat.len());
-    for i in flat.drain(..) {
+    // 2. whitespace carries no style: peel styled runs' edge spaces into plain
+    //    runs. (Markdown cannot express emphasis whose edge is a space —
+    //    `* and *` never parses — so the contract says the space isn't styled.)
+    let mut peeled: Vec<NfInline> = Vec::with_capacity(flat.len());
+    for i in flat {
+        match i {
+            NfInline::Run { text, bold, italic } if (bold || italic) && !text.is_empty() => {
+                let core_start = text.len() - text.trim_start().len();
+                let core_end = text.trim_end().len();
+                if core_start > 0 {
+                    peeled.push(plain_run(" "));
+                }
+                if core_start < core_end {
+                    peeled.push(NfInline::Run {
+                        text: text[core_start..core_end].to_string(),
+                        bold,
+                        italic,
+                    });
+                } else if core_start == 0 {
+                    // all-whitespace styled run
+                    peeled.push(plain_run(" "));
+                }
+                if core_end < text.len() && core_start < core_end {
+                    peeled.push(plain_run(" "));
+                }
+            }
+            other => peeled.push(other),
+        }
+    }
+    // 3. merge adjacent same-style runs, re-collapsing whitespace across the seam.
+    let mut merged: Vec<NfInline> = Vec::with_capacity(peeled.len());
+    for i in peeled {
         match (merged.last_mut(), &i) {
             (
                 Some(NfInline::Run {
@@ -124,10 +158,14 @@ pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
                     italic: i0,
                 }),
                 NfInline::Run { text, bold, italic },
-            ) if b0 == bold && i0 == italic => t0.push_str(text),
+            ) if b0 == bold && i0 == italic => {
+                t0.push_str(text);
+                *t0 = collapse_ws(t0);
+            }
             _ => merged.push(i),
         }
     }
+    // 4. trim sequence edges + drop empty runs.
     if let Some(NfInline::Run { text, .. }) = merged.first_mut() {
         *text = text.trim_start().to_string();
     }
@@ -136,6 +174,14 @@ pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
     }
     merged.retain(|i| !matches!(i, NfInline::Run { text, .. } if text.is_empty()));
     merged
+}
+
+fn plain_run(s: &str) -> NfInline {
+    NfInline::Run {
+        text: s.to_string(),
+        bold: false,
+        italic: false,
+    }
 }
 
 fn collapse_ws(s: &str) -> String {
@@ -193,10 +239,19 @@ pub fn from_ast(nodes: &[Node]) -> Vec<NfBlock> {
             }),
             Node::Table { rows } => {
                 if !rows.is_empty() {
+                    // GFM forces rectangular tables (the header row fixes the
+                    // column count), so the contract compares rows padded to
+                    // the table's max width with empty cells.
+                    let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
                     out.push(NfBlock::Table {
                         rows: rows
                             .iter()
-                            .map(|r| r.iter().map(|c| inline_nf(c, false, false)).collect())
+                            .map(|r| {
+                                let mut row: Vec<Vec<NfInline>> =
+                                    r.iter().map(|c| inline_nf(c, false, false)).collect();
+                                row.resize(cols, Vec::new());
+                                row
+                            })
                             .collect(),
                     });
                 }

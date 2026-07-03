@@ -760,3 +760,20 @@
 - **Tests:** 61 lib 绿(mdnorm 编译入库);harness 三测刻意红,其余全绿;fmt/clippy 干净。
 - **Benchmark:** 不涉（桩+测试设施,热路径未动）。
 - **Regression?** none。
+
+---
+
+## [2026-07-03] Stage 3 M2：render::markdown 实装,往返 harness 全绿（1071/1071）⭐⭐
+
+- **Change:** `src/render/markdown.rs` 实装——从 mdnorm 归一化 run 渲染（源头消灭 `***` 相邻歧义）、`*` 族 emphasis、紧列表、自适应 fence 长度、GFM 管道表格（row0 为表头）、`Unsupported` → ```` ```wikitext ```` fenced 块逐字保源。
+- **红→绿修掉的 7 个真问题（每个都是 harness/独立裁判抓的,自写测试全会放过）:**
+  1. **裁判侧**:紧列表项文本在嵌套块 Start 前未冲进所属 item,漏进子列表（pulldown_nf 状态机 flush）。
+  2. **契约**:"空白不携带样式"——样式 run 首尾空格剥成普通 run（`* and *` 在 CommonMark 里永远解析不出斜体,这是 markdown 的表达边界,进契约表）。
+  3. **契约**:merge 跨缝后二次 collapse（被丢弃 File 链接留下的双空格）。
+  4. **md_href**:先实体解码（MediaWiki 标题语义,`[[WW&nbsp;II]]`→`WW_II`）+ `&`→%26（**真发现:markdown 目标里的 `&nbsp;` 会被任何 MD 消费者二次实体解码**——不修的话内链在下游全变形）。
+  5. **渲染器**:`**x***, even*` 三连星构成单 delimiter run,整体侧翼判定使剩余星无法开斜体→字面泄漏;修:紧跟 `*` 且标点开头的斜体换 `_` 族（run 分离,各自判侧翼;带下一 run 前瞻,`_` 不能 intraword 闭合）。已知理论缺口:前`*`+标点开头+后接字母三重命中时保 `*`,fuzz 盯守。
+  6. **渲染器**:同类型相邻列表隔单空行会被 CommonMark 合并成一个列表;修:交替 bullet（`-`/`*`、`1.`/`1)`）,换字符即开新列表（顶层与 item 内子列表序列同规则）。
+  7. **契约**:GFM 表格强制矩形（表头定列数）——行按最大宽度补空 cell 比对（from_ast 与渲染器同步）。
+- **Tests:** harness 三测全绿:手工 9/9、样例文章、**parserTests 1071/1071**;全量 90 测试绿、fmt/clippy 干净、ratchet 不退。
+- **Benchmark:** 本轮机器噪声明显——**参照基线 parse_wiki_text 同步 -11%**（306→261,第三方 crate,不可能被本改动影响）,strip 同幅度;热路径 git diff 零改动（markdown/mdnorm 纯新增面）。判定:环境噪声非回归;M4 收尾时复测确认并以复测数为准。
+- **Regression?** none（待复测背书）。

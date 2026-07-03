@@ -48,6 +48,18 @@ impl St {
         normalize_inlines(std::mem::take(&mut self.inline))
     }
 
+    /// A tight-list item's text has no Paragraph wrapper, so when a nested
+    /// block starts, the pending inline belongs to the currently open item —
+    /// flush it there before the block opens, or it leaks into the sublist.
+    fn flush_inline_to_open_item(&mut self) {
+        if self.inline.is_empty() {
+            return;
+        }
+        if let Some((content, _)) = self.item_content.last_mut() {
+            content.append(&mut self.inline);
+        }
+    }
+
     fn close_block(&mut self, b: NfBlock) {
         // Route to the innermost open container: item > top level.
         if let Some((content, subs)) = self.item_content.last_mut() {
@@ -81,6 +93,12 @@ impl St {
     }
 
     fn start(&mut self, tag: Tag) {
+        if matches!(
+            tag,
+            Tag::Paragraph | Tag::Heading { .. } | Tag::List(_) | Tag::CodeBlock(_) | Tag::Table(_)
+        ) {
+            self.flush_inline_to_open_item();
+        }
         match tag {
             Tag::Paragraph => {}
             Tag::Heading { .. } => {}
