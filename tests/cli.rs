@@ -164,3 +164,46 @@ fn reports_conversion_rate() {
     assert!(err.contains("pages=2"), "got: {err}");
     assert!(err.contains("clean=1"), "got: {err}"); // "stray }} brace" leaves residual }}
 }
+
+#[test]
+fn sections_format_emits_parseable_jsonl() {
+    // Stage 3 (LLM output): one JSON object per page with flat, level-tagged
+    // sections — the RAG-chunking contract from stage-3-llm-output.md.
+    let xml = "<mediawiki><page><title>Earth</title><ns>0</ns>\
+        <revision><text>Lead prose.\n\n== History ==\n\nOld times.\n\n=== Deep ===\n\nFine.</text>\
+        </revision></page></mediawiki>";
+    let out = run(&["--format", "sections"], xml, "sections.xml");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8(out.stdout).unwrap();
+    let line = s.lines().next().expect("one line per page");
+    let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON per line");
+    assert_eq!(v["title"].as_str(), Some("Earth"));
+    let secs = v["sections"].as_array().unwrap();
+    assert_eq!(secs.len(), 3, "lead + h2 + h3: {line}");
+    assert_eq!(secs[0]["level"].as_u64(), Some(0));
+    assert_eq!(secs[1]["heading"].as_str(), Some("History"));
+    assert_eq!(secs[1]["text"].as_str(), Some("Old times."));
+    assert_eq!(secs[2]["level"].as_u64(), Some(3));
+}
+
+#[test]
+fn sections_format_rejects_strip_engine_and_stats() {
+    let xml = "<mediawiki><page><title>T</title><ns>0</ns>\
+        <revision><text>body</text></revision></page></mediawiki>";
+    // strip has no AST to sectionize — fail loudly, no silent fallback.
+    let out = run(
+        &["--format", "sections", "--engine", "strip"],
+        xml,
+        "s1.xml",
+    );
+    assert!(!out.status.success(), "strip+sections must be an error");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("ast"), "stderr should point at the fix: {err}");
+    // --stats measures plain-text cleanliness; sections would skew it.
+    let out = run(&["--format", "sections", "--stats"], xml, "s2.xml");
+    assert!(!out.status.success(), "stats+sections must be an error");
+}

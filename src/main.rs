@@ -18,10 +18,13 @@ use wikrs::{dump, extract, output, parser, render};
 const BATCH_PAGES: usize = 4096;
 const BATCH_BYTES: usize = 32 << 20; // 32 MiB of raw wikitext
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 enum Format {
     Text,
     Jsonl,
+    /// Stage 3 (LLM output): one JSON object per page with flat, level-tagged
+    /// sections for RAG chunking (requires the `ast` engine).
+    Sections,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -63,6 +66,13 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    if cli.format == Format::Sections && matches!(cli.engine, Engine::Strip) {
+        anyhow::bail!("--format sections needs the AST; use --engine ast (the default)");
+    }
+    if cli.format == Format::Sections && cli.stats {
+        anyhow::bail!("--stats measures plain-text conversion; use --format text or jsonl");
+    }
+
     // Stream the dump in bounded batches: read sequentially (one decompressor),
     // render each batch in parallel, write in dump order. A dump read/decode
     // error is a hard error — silently skipping pages (the old
@@ -102,9 +112,14 @@ fn main() -> anyhow::Result<()> {
         let rendered: Vec<(String, String)> = batch
             .into_par_iter()
             .map(|p| {
-                let text = match cli.engine {
-                    Engine::Strip => extract::strip(&p.text),
-                    Engine::Ast => render::plain(&parser::parse(&p.text).nodes),
+                let text = match (cli.format, cli.engine) {
+                    // The whole JSON line is built here: sectioning needs the
+                    // AST, which does not outlive this closure.
+                    (Format::Sections, _) => {
+                        output::to_sections_jsonl(&p.title, &parser::parse(&p.text).nodes)
+                    }
+                    (_, Engine::Strip) => extract::strip(&p.text),
+                    (_, Engine::Ast) => render::plain(&parser::parse(&p.text).nodes),
                 };
                 (p.title, text)
             })
@@ -118,7 +133,7 @@ fn main() -> anyhow::Result<()> {
                 }
             } else {
                 match cli.format {
-                    Format::Text => writeln!(w, "{text}")?,
+                    Format::Text | Format::Sections => writeln!(w, "{text}")?,
                     Format::Jsonl => writeln!(w, "{}", output::to_jsonl(title, text))?,
                 }
             }

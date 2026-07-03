@@ -2,6 +2,11 @@
 
 Notable changes to wikrs. Loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+- **`--format sections`** (Stage 3, LLM-facing output): one JSON object per page with the article split into flat, level-tagged sections for RAG chunking — `{"title", "sections": [{"level", "heading", "text"}]}`. `level` is the heading's `=` count (`==` → 2); prose before the first heading is the lead (`level: 0`, empty heading), omitted when the page starts with a heading. Requires the `ast` engine; combining with `--engine strip` or `--stats` is an explicit error. Schema contract: `docs/stages/stage-3-llm-output.md`.
+
 ## [0.1.1] — 2026-07-02
 
 Docs-and-tests patch; no code changes.

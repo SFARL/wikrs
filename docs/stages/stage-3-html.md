@@ -1,8 +1,10 @@
 > *Internal dev-history document (Chinese). For English, see [DESIGN.md](../DESIGN.md) and [TESTING.md](../TESTING.md).*
 
-# Stage 3 —（可选）AST → HTML 渲染
+# Stage 3 —（已否决）AST → HTML 渲染
 
-**状态:** 未开工 · **可选** · **日期:** 2026-06-23 · **定位:** 锦上添花，非主线
+> **⚠️ 已被 [stage-3-llm-output.md](stage-3-llm-output.md) 取代（2026-07-02）。** 实际场景是 LLM 数据管线（sections JSONL + Markdown），HTML 无消费者。首次实现（4 提交）留档于 `feat/stage3-html` 分支。本文件保留作决策史。
+
+**状态:** 已否决 · **日期:** 2026-06-23 · **定位:** 锦上添花，非主线
 
 > 只有在 Stage 1/2 立住、且有真实需求拉动时才做。**不要在它身上重新掉进 byte-level 兼容的坑（D1）。**
 > 设计见 [../DESIGN.md](../DESIGN.md)；测试见 [../TESTING.md](../TESTING.md)。

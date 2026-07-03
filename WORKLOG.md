@@ -728,3 +728,15 @@
 - **Tests:** 6 CLI 测试绿、全量 10 target 绿、fmt/clippy 干净、ratchet 不退;`cargo publish --dry-run` @0.1.1 干净（54 文件 / 122.2 KiB）。
 - **Benchmark:** 无代码改动;criterion 不涉。
 - **Regression?** none。
+
+---
+
+## [2026-07-02] Stage 3 改向 + `--format sections` 落地（LLM 输出线第一步）⭐
+
+- **方向重议（用户拍板,文档化于 stages/stage-3-llm-output.md）:** 场景明确为 **LLM 数据管线**（RAG 切块 + Markdown 语料）,HTML 无消费者 → **HTML 方案否决**（原实现留档 `feat/stage3-html`,stage-3-html.md 挂 superseded 头）。上午回滚的教训同时修正了论证:"HTML 是信息超集"对 wikrs AST 不成立（9 节点 GFM 全装得下）;"MD 没有 ground truth"不对——**往返差分**（render::markdown → pulldown-cmark 独立解析 → 比对源 AST）就是外部锚点,且可 fuzz。Markdown 排下一 session,**harness 先红后绿**。
+- **Change:** `output::to_sections_jsonl` + CLI `--format sections`——每页一行 `{"title", "sections":[{level, heading, text}]}`,平铺切分（每个顶层 Heading 开新 section,层级由 level 携带）;导语 level 0/空 heading,页面以 heading 开头则不发空壳;连续 heading 保留空 text;空页 sections 为空数组。**零新渲染语义**:这是 AST 序列化不是翻译——text/heading 走已被差分锚定的 `render::plain`,level 是 parser 既有受测语义（`==`→2）,故自写单测即充分判据,与 ground-truth-first 不矛盾（论证进 stage 文档）。边界拒绝:`sections+strip`、`sections+stats` 显式 bail。
+- **Tests（TDD 先红后绿）:** 5 个 output 单测（平铺+导语、无导语、连续空 section、heading 内联格式/实体过 plain、真 parser 集成断 level 0/2/3）+ 2 个 CLI e2e（逐行 serde_json 回解、字段断言;strip/stats 拒绝对）。**87 测试全绿**、fmt/clippy 干净、ratchet 不退（parser 未动）。
+- **真实验收（S3）:** 全量 simplewiki 281,799 页 `--format sections`——**每行 JSON 合法、schema 全符、0 坏行**,平均 3.3 sections/页,端到端 **4.81s**（text 4.67s,成本 ~3%）。
+- **Benchmark:** criterion 噪声内（ast ~123 MiB/s、参照 ~305）;sections 只在新格式分支,不碰既有热路径。
+- **Regression?** none。
+- **下一步（M1-M4）:** `render::markdown`——先建 pulldown-cmark 往返 harness（dev-dep）,对桩渲染器跑红,再写语义;fuzz 同一性质;`Unsupported` 用 fenced block 可见标记;CLI `--format markdown`。
