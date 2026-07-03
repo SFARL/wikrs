@@ -1,6 +1,10 @@
 //! Render an AST to output. Stage 2 starts with plain text — the same product
 //! as Stage 1's `extract::strip`, but driven by a real parse so it can preserve
-//! structure. Structured (JSONL) and HTML renderers come later.
+//! structure. Stage 3 adds [`markdown`], validated by the round-trip harness.
+
+mod markdown;
+
+pub use markdown::markdown;
 
 use crate::ast::Node;
 
