@@ -2,11 +2,12 @@
 
 **Status:** Draft · **Date:** 2026-06-23 · **Name:** `wikrs` (crates.io availability confirmed 2026-07-01)
 
-> **⚠️ Current-state snapshot (2026-07-01) — this document was written before implementation began; where the body disagrees with this box, the box wins:**
+> **⚠️ Current-state snapshot (2026-07-02) — this document was written before implementation began; where the body disagrees with this box, the box wins:**
 > Stage 1 ✅ done (kept as `--engine strip`); **the Stage 2 AST engine is the CLI default** (49.1% of parserTests parse with zero diagnostics; differential: 99.3% word-precision / 0% silent).
 > The `dump` module gained XML entity (GeneralRef) handling and **parallel multistream decoding** (`open_multistream` + `--index`).
 > CLI: bounded-batch streaming (O(batch) memory), hard failure on dump errors.
 > **Scale validation: the full English Wikipedia — 7,189,653 pages, 98.0% clean, 7.4 minutes, zero crashes (5.1× via `--index`).**
+> **Stage 3 re-scoped to LLM-facing output** ([stages/stage-3-llm-output.md](stages/stage-3-llm-output.md)): `--format sections` (flat, level-tagged sections JSONL for RAG chunking) **shipped in 0.2.0**; `render::markdown` is next, anchored by a pulldown-cmark round-trip harness. The HTML renderer is descoped (no consumer; first implementation archived on `feat/stage3-html`).
 > The current architectural truth lives in [WORKLOG.md](../WORKLOG.md) (per-change evidence, Chinese) and the README scoreboard; the rest of this document is the founding design, kept as decision background.
 
 ---
@@ -76,8 +77,9 @@ This is a structural problem no amount of engineering effort removes; the design
                                           └──► diag::Diagnostics (out-of-range warnings, no silent drops)
                          └──────────────────────────────────────────────────┘
 
-                         ┌─────────────── Stage 3 (optional) ────────────────┐
-                                          AST ──► render::html
+                         ┌────────── Stage 3 (LLM output; was: html) ────────┐
+                              AST ──► output::to_sections_jsonl  (shipped 0.2.0)
+                                 └──► render::markdown           (planned next)
                          └──────────────────────────────────────────────────┘
 ```
 
@@ -99,11 +101,11 @@ wikrs/
 │   ├── main.rs                 # bin `wikrs`: CLI (clap + rayon)
 │   ├── dump.rs                 # streaming XML dump reader (multistream .bz2)
 │   ├── extract.rs (+ extract/) # Stage 1: lossy strip (comments/templates/links/markup passes)
-│   ├── output.rs               # text / jsonl output
+│   ├── output.rs               # text / jsonl / sections output
 │   ├── tokenizer.rs            # Stage 2: inline tokenizer (handwritten, single-pass linear) ✓
 │   ├── parser.rs               # Stage 2: block-level + inline assembly → AST + diagnostics ✓
 │   ├── ast.rs                  # `Node<'a>` (Cow, borrow-friendly) ✓
-│   ├── render.rs               # `render::plain` (struct/html pending) ✓
+│   ├── render.rs               # `render::plain` (`markdown` planned) ✓
 │   └── diag.rs                 # `Diagnostic` / `Severity` / error codes ✓
 ├── benches/compare.rs          # criterion: parse_wiki_text vs wikrs_strip vs wikrs_ast
 ├── fuzz/                       # cargo-fuzz targets (strip, parse; own workspace)
@@ -143,7 +145,8 @@ wikrs/
 - `text` (default, Stage 1): clean plain text per article.
 - `jsonl`: one `{title, text, …}` per line — the most common shape for training/RAG pipelines.
 - `ast-json` (Stage 2): the structured AST.
-- `html` (Stage 3).
+- `sections` (Stage 3, **shipped 0.2.0**): one JSON object per page with flat, level-tagged sections for RAG chunking — `{"title", "sections": [{"level", "heading", "text"}]}`.
+- `markdown` (Stage 3, planned): GFM text via `render::markdown`, validated by a pulldown-cmark round-trip harness. *(An `html` format sat here originally; descoped 2026-07-02 — no consumer.)*
 
 ### Filters / behavior switches
 - `--namespaces 0`, `--skip-redirects` (default on), `--min-text-len`, `--templates drop|whitelist`.
@@ -199,7 +202,7 @@ Explicitly **not** doing — written into the README to manage expectations:
 - ❌ Byte-level MediaWiki compatibility (D1).
 - ❌ Full template expansion / Lua (Scribunto) execution.
 - ❌ Visual-editor round-tripping (Parsoid's `data-*` annotations).
-- ❌ Writing or editing wikitext. This project is **read-direction only**: wikitext → text/AST/HTML.
+- ❌ Writing or editing wikitext. This project is **read-direction only**: wikitext → text / AST / sections JSONL / Markdown.
 
 ---
 

@@ -35,7 +35,7 @@ Whether that sentence stands is decided entirely by layers 1 and 2 below.
 
 - **What:** a batch of real English Wikipedia pages; wikrs's extracted prose vs ground truth, diffed at the text level.
 - **Ground truth:** the Wikipedia REST API (`/page/html/{title}`) serving Parsoid's official HTML, with visible prose extracted via `scraper`.
-- **Why text-level, not DOM:** Stage 2 renders plain text only (`render::plain`); there is no `render::html` (that's Stage 3). So the comparison is **wikrs plain text vs the visible prose of Parsoid's HTML**.
+- **Why text-level, not DOM:** Stage 2 renders plain text only (`render::plain`); wikrs has no HTML renderer (the Stage 3 HTML plan was descoped 2026-07-02 — Stage 3 is LLM-facing output now). So the comparison is **wikrs plain text vs the visible prose of Parsoid's HTML**.
 - **Diff method:** both sides normalize into 3-word shingle sets; compute **precision** (how much of wikrs's output the article corroborates) and **coverage** (how much of the article's prose wikrs reproduces).
 - **Key design — precision-led, template omission not penalized:** wikrs drops templates by design (the D4 moat), so its output is a **subset** of Parsoid's prose. The headline is precision ("is what wikrs emits correct"); coverage is reported separately (the template-omission gap is **not a failure**).
 - **Page buckets vs reality:** `classify` puts each page into `Faithful`/`Divergent`/`Reported`. But "Reported" is page-level — any single out-of-range construct (a `{|` table, `<math>`, a gallery) flags the whole page, and every real featured article has at least one → **the page buckets collapse to 0/0/100 on real pages**: honest but uninformative.
@@ -80,7 +80,7 @@ Every module tests in place: `dump` (small XML in; page splitting / redirect ski
 
 | Baseline | What it is | How to run | Status |
 |----------|-----------|-----------|--------|
-| **MediaWiki `parserTests.txt`** | correctness oracle (wikitext→expected HTML), **GPL** | `cargo xtask fetch-parser-tests` (not committed) → `cargo test --test parser_tests` | ✅ 1077 cases loaded; **Stage 2 zero-diagnostic coverage 49.1%** (`stage2_coverage_rate`); per-case HTML equivalence waits for `render::html` |
+| **MediaWiki `parserTests.txt`** | correctness oracle (wikitext→expected HTML), **GPL** | `cargo xtask fetch-parser-tests` (not committed) → `cargo test --test parser_tests` | ✅ 1077 cases loaded; **Stage 2 zero-diagnostic coverage 49.1%** (`stage2_coverage_rate`); the HTML expectations anchor parse-side semantics only — per-case HTML equivalence died with the HTML renderer (Stage 3 re-scoped to LLM output; Markdown's external anchor is a round-trip harness instead) |
 | **Full real-dump validation** | the scale layer: conversion rate / memory / throughput on real heterogeneous corpora (`--stats` residual-markup floor) | download a dump → `wikrs --input <dump.xml.bz2> [--index <ms-index>] --stats` | ✅ **full enwiki: 7,189,653 pages, 98.0% clean, 7.4 min (`--index` parallel) / 38 min (single-stream), zero crashes**; full simplewiki identically 98.0% (consistent across corpora). Surfaced and fixed: the `]]` File-caption leak, `{{…\|}}` table fragmentation, silent dump-entity loss |
 | **`parse_wiki_text`** | the most serious community Rust parser (0.1.5/2018, unmaintained); speed baseline | `cargo bench --bench compare` (dev-dependency, **not shipped**) | ✅ sample article ~306 MiB/s; alongside `wikrs_strip` (~122) and `wikrs_ast` (~120) |
 | **WikiExtractor** | the de-facto Python extractor; speed + behavior baseline | `tools/wikiextractor/setup.sh` (venv, **pinned to Python 3.10**) → `cargo xtask bench-compare <dump>` | ✅ full real simplewiki (1.67 GB): **wikrs ~32× faster** (322 vs 10.2 MB/s, WikiExtractor at its default 9-process parallelism; the 8.3 MB synthetic dump shows ~22× — small inputs are dominated by wikrs's startup overhead) |
@@ -117,6 +117,6 @@ Every module tests in place: `dump` (small XML in; page splitting / redirect ski
 |-------|-----------|-----|
 | 1 extractor | unit + snapshots + **vs-WikiExtractor benchmark** | behavior aligned with WikiExtractor (itemized) and **an order of magnitude faster**, reproducibly |
 | 2 AST | all four layers + the differential report | parserTests coverage on target + the precision/coverage numbers (precision-led) + fuzz clean |
-| 3 HTML | layer 1 (HTML comparison) + snapshots | parserTests HTML equivalence inside the declared range |
+| 3 LLM output | sections: unit + CLI e2e + full-dump line validation (**shipped 0.2.0**: 281,799 pages, 0 bad lines); markdown: **round-trip harness first** (render → pulldown-cmark → compare vs source AST), then fuzz the same property | sections schema exact per `stages/stage-3-llm-output.md`; markdown round-trip structural equality inside the declared range |
 
 Detailed checkpoints live in each stage doc.

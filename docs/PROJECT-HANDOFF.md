@@ -36,7 +36,7 @@
 
 - **第一阶段 / 保底档（先做这个发布）**：wikitext → 干净 plain text。即"Rust 版 WikiExtractor"。卖点是**速度**（处理全量英文 dump 从几小时 → 几十分钟，可 benchmark，语言级优势几乎确定能拿到）。即使解析质量只和 WikiExtractor 打平，光速度就有人用、能拿 star。**先把这层做出来拿第一波反馈，再往上叠。**
 - **第二阶段 / 进阶档**：产出结构化 AST，保留表格/链接锚文本/结构，对处理不了的怪异输入报警而非静默丢弃。这才是真正的声誉项目。
-- **第三阶段（可选）**：AST → HTML 渲染。
+- **第三阶段（可选）**：AST → HTML 渲染。*（2026-07-02 改向：实际场景是 LLM 管线，Stage 3 = sections JSONL（0.2.0 已发）+ Markdown（往返 harness 先行）；HTML 无消费者，已否决——见 [stages/stage-3-llm-output.md](stages/stage-3-llm-output.md)。）*
 
 ## 测试策略（项目命门，第一周就要搭）
 
