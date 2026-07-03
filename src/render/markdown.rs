@@ -48,7 +48,7 @@ fn render_block_markers(b: &NfBlock, indent: usize, flip_list: bool, out: &mut S
                 out.push('#');
             }
             out.push(' ');
-            render_inlines(inl, Ctx::LineStart, out);
+            render_inlines(inl, Ctx::Heading, out);
             out.push('\n');
         }
         NfBlock::Para(inl) => {
@@ -120,8 +120,21 @@ fn render_item(ordered: bool, flip: bool, item: &NfItem, indent: usize, out: &mu
     // Adjacent same-type sublists inside one item: same merge hazard.
     let mut sub_flip = false;
     let mut prev_ordered: Option<bool> = None;
-    for sub in &item.sublists {
-        if let NfBlock::List { ordered, .. } = sub {
+    for (si, sub) in item.sublists.iter().enumerate() {
+        if let NfBlock::List {
+            ordered,
+            items: sub_items,
+        } = sub
+        {
+            // A list may not BEGIN with an empty item where it would
+            // interrupt a paragraph — end this item's text with a blank
+            // line first (looseness is normalized away on the NF side).
+            if si == 0
+                && !item.content.is_empty()
+                && sub_items.first().is_some_and(|it| it.content.is_empty())
+            {
+                out.push('\n');
+            }
             sub_flip = prev_ordered == Some(*ordered) && !sub_flip;
             prev_ordered = Some(*ordered);
         }
@@ -133,8 +146,11 @@ fn render_item(ordered: bool, flip: bool, item: &NfItem, indent: usize, out: &mu
 /// position-hazardous.
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
-    /// First content on a paragraph/heading line.
+    /// First content on a paragraph line.
     LineStart,
+    /// Inside an ATX heading (`#` must be escaped — a trailing run would
+    /// read as the closing sequence).
+    Heading,
     /// First content after a list marker (`- ` / `1. `).
     ListItemStart,
     /// Inside a GFM table cell (`|` must be escaped).
@@ -146,62 +162,36 @@ fn render_inlines(inlines: &[NfInline], ctx: Ctx, out: &mut String) {
         let at_start = idx == 0 && ctx != Ctx::TableCell;
         match inl {
             NfInline::Run { text, bold, italic } => {
-                let delim = delim_family(out, text, inlines.get(idx + 1), *bold || *italic);
+                // Styled runs have alphanumeric edges (mdnorm peels the
+                // rest), which makes every `*` delimiter boundary valid
+                // under CommonMark's flanking rules by construction.
                 if *bold {
-                    out.push(delim);
-                    out.push(delim);
+                    out.push_str("**");
                 }
                 if *italic {
-                    out.push(delim);
+                    out.push('*');
                 }
                 push_escaped_text(text, at_start && !*bold && !*italic, ctx, out);
                 if *italic {
-                    out.push(delim);
+                    out.push('*');
                 }
                 if *bold {
-                    out.push(delim);
-                    out.push(delim);
+                    out.push_str("**");
                 }
             }
             NfInline::Link { href, label } => {
+                // A trailing `!` would fuse with our `[` into image syntax.
+                if out.ends_with('!') {
+                    out.pop();
+                    out.push_str("\\!");
+                }
                 out.push('[');
                 render_inlines(label, Ctx::TableCell, out); // never line-start inside []
                 out.push_str("](");
-                push_href(href, ctx, out);
+                push_href(href, out);
                 out.push(')');
             }
         }
-    }
-}
-
-/// Pick `*` or `_` for this styled run's delimiters. `*` is the default; but a
-/// `*`-opener directly after a `*` (previous styled run) whose text starts
-/// with punctuation fuses into one delimiter run whose flanking fails —
-/// literal stars leak. `_` separates the runs; it is only safe when whatever
-/// follows the closer is not alphanumeric (`_` cannot close intraword).
-fn delim_family(out: &str, text: &str, next: Option<&NfInline>, styled: bool) -> char {
-    if !styled {
-        return '*';
-    }
-    let prev_is_star = out.ends_with('*');
-    let starts_punct = text
-        .chars()
-        .next()
-        .is_some_and(|c| !c.is_alphanumeric() && !c.is_whitespace());
-    if !(prev_is_star && starts_punct) {
-        return '*';
-    }
-    let next_alnum = match next {
-        None => false,                        // block edge: safe
-        Some(NfInline::Link { .. }) => false, // `[` is punctuation: safe
-        Some(NfInline::Run { text, .. }) => {
-            text.chars().next().is_some_and(|c| c.is_alphanumeric())
-        }
-    };
-    if next_alnum {
-        '*' // rare double-hazard; keep `*` (known theoretical gap, fuzz-watched)
-    } else {
-        '_'
     }
 }
 
@@ -217,7 +207,14 @@ fn push_escaped_text(text: &str, at_line_start: bool, ctx: Ctx, out: &mut String
             }
             '<' => out.push_str("&lt;"),
             '&' => out.push_str("&amp;"),
-            '|' if ctx == Ctx::TableCell => out.push_str("\\|"),
+            // `|` escapes everywhere: inside a table cell it splits the
+            // cell; in contiguous lines (list item + sublist) it can conjure
+            // a GFM table out of thin air (`x|` + `- |` = header + delimiter).
+            '|' => out.push_str("\\|"),
+            '#' if ctx == Ctx::Heading => {
+                out.push('\\');
+                out.push(ch);
+            }
             '#' | '>' | '-' | '+' | '=' | '~' if at_line_start && i == 0 => {
                 out.push('\\');
                 out.push(ch);
@@ -237,21 +234,14 @@ fn leading_digits(text: &str, i: usize) -> bool {
 }
 
 /// Link destination: angle-wrap when it contains characters that break the
-/// plain `(dest)` form. Inside a table cell, `|` still splits cells even in a
-/// destination — percent-encode it there.
-fn push_href(href: &str, ctx: Ctx, out: &mut String) {
-    let needs_angle = href.contains([' ', '(', ')', '<', '>']);
+/// plain `(dest)` form. No character transforms here — those belong to
+/// `md_href`, the shared contract (it already excludes `<`/`>`/`|`/controls).
+fn push_href(href: &str, out: &mut String) {
+    let needs_angle = href.contains([' ', '(', ')']);
     if needs_angle {
         out.push('<');
     }
-    for ch in href.chars() {
-        match ch {
-            '<' => out.push_str("%3C"),
-            '>' => out.push_str("%3E"),
-            '|' if ctx == Ctx::TableCell => out.push_str("%7C"),
-            _ => out.push(ch),
-        }
-    }
+    out.push_str(href);
     if needs_angle {
         out.push('>');
     }

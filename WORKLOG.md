@@ -777,3 +777,23 @@
 - **Tests:** harness 三测全绿:手工 9/9、样例文章、**parserTests 1071/1071**;全量 90 测试绿、fmt/clippy 干净、ratchet 不退。
 - **Benchmark:** 本轮机器噪声明显——**参照基线 parse_wiki_text 同步 -11%**（306→261,第三方 crate,不可能被本改动影响）,strip 同幅度;热路径 git diff 零改动（markdown/mdnorm 纯新增面）。判定:环境噪声非回归;M4 收尾时复测确认并以复测数为准。
 - **Regression?** none（待复测背书）。
+
+---
+
+## [2026-07-03] Stage 3 M3：fuzz 往返性质——8 个真发现,15 分钟 214 万次执行零 crash ⭐⭐
+
+- **Change:** `fuzz_targets/markdown_roundtrip.rs`——任意输入 `parse → render::markdown → pulldown-cmark → NF 比对源 AST`,断言相等（`#[path]` 复用 tests/support/pulldown_nf.rs;pulldown-cmark 进 fuzz workspace 依赖）。种子复用 parse 语料 24,218 个。
+- **fuzz 驱动修掉的 8 类真问题**（每个都是 1071 条 parserTests 语料没覆盖到的,证明 fuzz 这一层不冗余）:
+  1. `{|`+空行 → **零 cell 表格**渲染出垃圾 `|\n|`（契约:零列表格丢弃）。
+  2. **NUL 字节**:CommonMark 输入归一化 U+0000→U+FFFD,intent 侧没做（契约:文本/code 同步 NUL 归一;外链 href 控制字节 %XX）。
+  3. `''\x00''q` → **样式 run 标点/符号收边**在侧翼规则下无法闭合（`*hot!*x` 同类,真实 prose 可命中）——根治:「样式 run 边缘非字母数字字符不携带样式」进契约,剥后定界符边界恒有效,连带删掉 M2 的 `_`-回退机制（简化）;**顺序修正**:必须先 merge 再 peel（pulldown 在实体处拆 Text 事件,先 peel 会错剥属于样式短语的孤立标点——case #940 抓的）。
+  4. **外链 URL mojibake**:md_href 外链分支按字节迭代 UTF-8,多字节字符碎成 Latin-1（`ǲ`→`Ç²`）——改 char 迭代。
+  5. **嵌套链接**（内链 label 含外链,合法 wikitext）markdown 无法表达——契约:label 内链接拍平成文本;空 target `[[]]` 拍平。
+  6. 文本尾 `!` + 链接 → **拼成图片语法** `![…](…)`——发射前回退转义 `\!`。
+  7. item 文本 `|` + 子列表行 `- |` → **凭空拼出 GFM 表格**（`- ` 恰好是合法分隔行 cell）——`|` 全语境转义。
+  8. **空项列表打断段落**被 CommonMark 禁止（父项文本+首子列表空项 → 并成续行）——先发空行结束段落（松紧列表已归一化);零内容零子列表的 item/列表整体丢弃进契约。
+  另:外链 href 的 `\`（转义闭括号）、"形如实体"的 `&`（`&#9;` 会被 MD 消费者二次解码）→ %XX/%26,字符级变换全部收拢进 md_href 单点（渲染器 push_href 只做角括号包裹,职责越界即裁判抓）。
+- **战果:** 修完后 **15 分钟 coverage-guided:2,139,005 次执行零 crash 零断言失败**;harness 全程保持 1071/1071 绿。契约表全部新条款回写计划文档 §0（人审锚点与实现同步）。
+- **Tests:** 95 全绿、fmt/clippy 干净、ratchet 不退。
+- **Benchmark（空闲机复测,兑现 M2 的待复测）:** 参照 ~300、strip ~117、**ast ~118 MiB/s**;ast/参照比值 0.393 vs 历史 0.392——一致,整体 ~2-5% 下移为机器热状态,判定无回归成立。
+- **Regression?** none（比值背书）。

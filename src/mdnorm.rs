@@ -82,7 +82,23 @@ pub fn md_href(target: &str) -> String {
         .iter()
         .any(|p| target.starts_with(p))
     {
-        return target.to_string();
+        // Pass through, but percent-encode control bytes (CommonMark input
+        // normalization would rewrite them — NUL → U+FFFD), `<`/`>`
+        // (unrepresentable in either markdown destination form), `|` (splits
+        // GFM table cells even inside a destination), and any `&` that forms
+        // an entity-shaped reference (CommonMark decodes entities inside
+        // destinations; a bare query separator `&a=1` has no `;` and is kept).
+        let mut href = String::with_capacity(target.len());
+        for (i, ch) in target.char_indices() {
+            match ch {
+                '\0'..='\u{1f}' | '\u{7f}' | '<' | '>' | '|' | '\\' => {
+                    href.push_str(&format!("%{:02X}", ch as u32));
+                }
+                '&' if entity_shaped(&target.as_bytes()[i + 1..]) => href.push_str("%26"),
+                _ => href.push(ch),
+            }
+        }
+        return href;
     }
     let decoded = crate::entities::decode(target);
     let mut href = String::with_capacity(decoded.len() + 2);
@@ -118,38 +134,87 @@ pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
             },
         })
         .collect();
-    // 2. whitespace carries no style: peel styled runs' edge spaces into plain
-    //    runs. (Markdown cannot express emphasis whose edge is a space —
-    //    `* and *` never parses — so the contract says the space isn't styled.)
+    // 2. merge adjacent same-style runs FIRST — the pulldown side splits text
+    //    at entities/escapes, and peeling before merging would strip style
+    //    from a lone punctuation fragment that belongs to a styled phrase.
+    let flat = merge_runs(flat);
+    // 3. styled-run edges must be alphanumeric: peel edge whitespace,
+    //    punctuation, and symbols into plain runs. CommonMark's flanking
+    //    rules make emphasis with a space edge unparseable (`* and *`) and
+    //    emphasis with a punctuation edge unclosable next to a letter
+    //    (`*hot!*x`); with alphanumeric edges every delimiter boundary is
+    //    valid by construction. The peeled characters render identically —
+    //    styled edge punctuation is not visually distinguishable — so the
+    //    contract declares them unstyled.
     let mut peeled: Vec<NfInline> = Vec::with_capacity(flat.len());
     for i in flat {
         match i {
             NfInline::Run { text, bold, italic } if (bold || italic) && !text.is_empty() => {
-                let core_start = text.len() - text.trim_start().len();
-                let core_end = text.trim_end().len();
+                let core_start = text
+                    .find(|c: char| c.is_alphanumeric())
+                    .unwrap_or(text.len());
+                let core_end = text
+                    .rfind(|c: char| c.is_alphanumeric())
+                    .map_or(0, |p| p + text[p..].chars().next().unwrap().len_utf8());
+                if core_start >= core_end {
+                    // no alphanumeric core: the whole run is unstylable
+                    peeled.push(plain_run(&text));
+                    continue;
+                }
                 if core_start > 0 {
-                    peeled.push(plain_run(" "));
+                    peeled.push(plain_run(&text[..core_start]));
                 }
-                if core_start < core_end {
-                    peeled.push(NfInline::Run {
-                        text: text[core_start..core_end].to_string(),
-                        bold,
-                        italic,
-                    });
-                } else if core_start == 0 {
-                    // all-whitespace styled run
-                    peeled.push(plain_run(" "));
-                }
-                if core_end < text.len() && core_start < core_end {
-                    peeled.push(plain_run(" "));
+                peeled.push(NfInline::Run {
+                    text: text[core_start..core_end].to_string(),
+                    bold,
+                    italic,
+                });
+                if core_end < text.len() {
+                    peeled.push(plain_run(&text[core_end..]));
                 }
             }
             other => peeled.push(other),
         }
     }
-    // 3. merge adjacent same-style runs, re-collapsing whitespace across the seam.
-    let mut merged: Vec<NfInline> = Vec::with_capacity(peeled.len());
-    for i in peeled {
+    // 4. merge again (peeling created plain runs next to plain neighbors).
+    let mut merged = merge_runs(peeled);
+    // 5. trim sequence edges + drop empty runs.
+    if let Some(NfInline::Run { text, .. }) = merged.first_mut() {
+        *text = text.trim_start().to_string();
+    }
+    if let Some(NfInline::Run { text, .. }) = merged.last_mut() {
+        *text = text.trim_end().to_string();
+    }
+    merged.retain(|i| !matches!(i, NfInline::Run { text, .. } if text.is_empty()));
+    merged
+}
+
+/// Does `rest` (the bytes after a `&`) look like an HTML entity reference —
+/// `#digits;`, `#x hex;`, or `name;`? Conservative superset of what CommonMark
+/// decodes: over-matching only means a `%26` both sides agree on.
+fn entity_shaped(rest: &[u8]) -> bool {
+    let body = match rest.first() {
+        Some(b'#') => match rest.get(1) {
+            Some(b'x') | Some(b'X') => &rest[2..],
+            _ => &rest[1..],
+        },
+        _ => rest,
+    };
+    let mut len = 0;
+    for &b in body {
+        match b {
+            b';' => return len > 0,
+            _ if b.is_ascii_alphanumeric() => len += 1,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Merge adjacent same-style runs, re-collapsing whitespace across each seam.
+fn merge_runs(runs: Vec<NfInline>) -> Vec<NfInline> {
+    let mut merged: Vec<NfInline> = Vec::with_capacity(runs.len());
+    for i in runs {
         match (merged.last_mut(), &i) {
             (
                 Some(NfInline::Run {
@@ -165,15 +230,17 @@ pub fn normalize_inlines(inlines: Vec<NfInline>) -> Vec<NfInline> {
             _ => merged.push(i),
         }
     }
-    // 4. trim sequence edges + drop empty runs.
-    if let Some(NfInline::Run { text, .. }) = merged.first_mut() {
-        *text = text.trim_start().to_string();
-    }
-    if let Some(NfInline::Run { text, .. }) = merged.last_mut() {
-        *text = text.trim_end().to_string();
-    }
-    merged.retain(|i| !matches!(i, NfInline::Run { text, .. } if text.is_empty()));
     merged
+}
+
+/// Code-block text normalization: trailing whitespace trimmed, NUL → U+FFFD,
+/// line endings to LF (CommonMark treats `\r` and `\r\n` as line endings, so
+/// they cannot round-trip literally through a fenced block).
+fn code_norm(s: &str) -> String {
+    s.trim_end()
+        .replace('\0', "\u{FFFD}")
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
 }
 
 fn plain_run(s: &str) -> NfInline {
@@ -194,7 +261,9 @@ fn collapse_ws(s: &str) -> String {
             }
             in_ws = true;
         } else {
-            out.push(ch);
+            // CommonMark input normalization replaces U+0000 with U+FFFD in
+            // any conforming consumer; the contract compares accordingly.
+            out.push(if ch == '\0' { '\u{FFFD}' } else { ch });
             in_ws = false;
         }
     }
@@ -221,7 +290,11 @@ pub fn from_ast(nodes: &[Node]) -> Vec<NfBlock> {
                     out.push(NfBlock::Para(inl));
                 }
             }
-            Node::List { ordered, items } => out.push(list_nf(*ordered, items)),
+            Node::List { ordered, items } => {
+                if let Some(list) = list_nf(*ordered, items) {
+                    out.push(list);
+                }
+            }
             Node::Preformatted(lines) => {
                 let text = lines
                     .iter()
@@ -230,19 +303,21 @@ pub fn from_ast(nodes: &[Node]) -> Vec<NfBlock> {
                     .join("\n");
                 out.push(NfBlock::Code {
                     info: String::new(),
-                    text: text.trim_end().to_string(),
+                    text: code_norm(&text),
                 });
             }
             Node::Unsupported(s) => out.push(NfBlock::Code {
                 info: "wikitext".to_string(),
-                text: s.trim_end().to_string(),
+                text: code_norm(s),
             }),
             Node::Table { rows } => {
-                if !rows.is_empty() {
-                    // GFM forces rectangular tables (the header row fixes the
-                    // column count), so the contract compares rows padded to
-                    // the table's max width with empty cells.
-                    let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+                // GFM forces rectangular tables (the header row fixes the
+                // column count), so the contract compares rows padded to the
+                // table's max width with empty cells. A table with no rows —
+                // or only zero-cell rows (`{| |- |-`) — has no GFM form and
+                // is dropped.
+                let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+                if cols > 0 {
                     out.push(NfBlock::Table {
                         rows: rows
                             .iter()
@@ -268,17 +343,21 @@ pub fn from_ast(nodes: &[Node]) -> Vec<NfBlock> {
     out
 }
 
-fn list_nf(ordered: bool, items: &[Vec<Node>]) -> NfBlock {
-    let items = items
+/// Items with neither content nor sublists are dropped (CommonMark forbids an
+/// empty item interrupting a paragraph, so `- t` + nested empty `-` cannot
+/// round-trip — and an empty wikitext bullet carries nothing); a list left
+/// with zero items is dropped with it.
+fn list_nf(ordered: bool, items: &[Vec<Node>]) -> Option<NfBlock> {
+    let items: Vec<NfItem> = items
         .iter()
         .map(|item| {
             let mut content = Vec::new();
             let mut sublists = Vec::new();
             for n in item {
                 if let Node::List { ordered, items } = n {
-                    sublists.push(list_nf(*ordered, items));
+                    sublists.extend(list_nf(*ordered, items));
                 } else {
-                    walk_inline(std::slice::from_ref(n), false, false, &mut content);
+                    walk_inline(std::slice::from_ref(n), false, false, false, &mut content);
                 }
             }
             NfItem {
@@ -286,17 +365,22 @@ fn list_nf(ordered: bool, items: &[Vec<Node>]) -> NfBlock {
                 sublists,
             }
         })
+        .filter(|it| !it.content.is_empty() || !it.sublists.is_empty())
         .collect();
-    NfBlock::List { ordered, items }
+    if items.is_empty() {
+        None
+    } else {
+        Some(NfBlock::List { ordered, items })
+    }
 }
 
 fn inline_nf(nodes: &[Node], bold: bool, italic: bool) -> Vec<NfInline> {
     let mut out = Vec::new();
-    walk_inline(nodes, bold, italic, &mut out);
+    walk_inline(nodes, bold, italic, false, &mut out);
     normalize_inlines(out)
 }
 
-fn walk_inline(nodes: &[Node], bold: bool, italic: bool, out: &mut Vec<NfInline>) {
+fn walk_inline(nodes: &[Node], bold: bool, italic: bool, in_label: bool, out: &mut Vec<NfInline>) {
     for node in nodes {
         match node {
             Node::Text(s) => out.push(NfInline::Run {
@@ -304,8 +388,24 @@ fn walk_inline(nodes: &[Node], bold: bool, italic: bool, out: &mut Vec<NfInline>
                 bold,
                 italic,
             }),
-            Node::Bold(children) => walk_inline(children, true, italic, out),
-            Node::Italic(children) => walk_inline(children, bold, true, out),
+            Node::Bold(children) => walk_inline(children, true, italic, in_label, out),
+            Node::Italic(children) => walk_inline(children, bold, true, in_label, out),
+            // A link with an empty target (`[[]]`) is degenerate wikitext:
+            // flatten to its visible text (contract normalization).
+            Node::Link { target, label } if target.trim().is_empty() => {
+                let text = plain_text(label);
+                out.push(NfInline::Run { text, bold, italic });
+            }
+            // Markdown cannot nest links: a link inside another link's label
+            // flattens to its visible text (contract normalization).
+            Node::Link { target, label } if in_label => {
+                let text = if label.is_empty() {
+                    target.to_string()
+                } else {
+                    plain_text(label)
+                };
+                out.push(NfInline::Run { text, bold, italic });
+            }
             Node::Link { target, label } => {
                 let href = md_href(target);
                 let label_nf = if label.is_empty() {
@@ -315,7 +415,9 @@ fn walk_inline(nodes: &[Node], bold: bool, italic: bool, out: &mut Vec<NfInline>
                         italic: false,
                     }]
                 } else {
-                    inline_nf(label, false, false)
+                    let mut inner = Vec::new();
+                    walk_inline(label, false, false, true, &mut inner);
+                    normalize_inlines(inner)
                 };
                 out.push(NfInline::Link {
                     href,
@@ -357,5 +459,54 @@ fn collect_text(nodes: &[Node], out: &mut String) {
             Node::Table { rows } => rows.iter().flatten().for_each(|c| collect_text(c, out)),
             Node::Unsupported(s) => out.push_str(s),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn styled_edges_are_alphanumeric_after_normalization() {
+        // "whitespace/punctuation carries no style": edges peel to plain runs.
+        let runs = normalize_inlines(vec![NfInline::Run {
+            text: " !hot stuff! ".to_string(),
+            bold: false,
+            italic: true,
+        }]);
+        assert_eq!(
+            runs,
+            vec![
+                NfInline::Run {
+                    text: "!".to_string(),
+                    bold: false,
+                    italic: false
+                },
+                NfInline::Run {
+                    text: "hot stuff".to_string(),
+                    bold: false,
+                    italic: true
+                },
+                NfInline::Run {
+                    text: "!".to_string(),
+                    bold: false,
+                    italic: false
+                },
+            ]
+        );
+        // no alphanumeric core → style dropped entirely
+        let runs = normalize_inlines(vec![NfInline::Run {
+            text: "!!!".to_string(),
+            bold: true,
+            italic: false,
+        }]);
+        assert_eq!(
+            runs,
+            vec![NfInline::Run {
+                text: "!!!".to_string(),
+                bold: false,
+                italic: false
+            }]
+        );
     }
 }
