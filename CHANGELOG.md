@@ -2,6 +2,12 @@
 
 Notable changes to wikrs. Loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+- **`--format markdown`** (Stage 3, LLM-facing output): one GFM markdown document per page — escaped `# title` plus a structure-preserving body (headings from `=` count, `**bold**`/`*italic*`, `[label](./Page_title)` links, nested lists, pipe tables, fenced code). Out-of-range constructs render as visible ` ```wikitext ` fenced blocks carrying the verbatim source — never silently dropped. Requires the `ast` engine; `--engine strip` or `--stats` combinations are explicit errors.
+- **Round-trip conformance harness** (`tests/markdown_roundtrip.rs`): every emitted document is parsed back by an independent GFM implementation (pulldown-cmark, dev-dependency only) and must reproduce exactly the normal form the AST declares — green over all 1,071 MediaWiki parserTests inputs, plus a dedicated fuzz target (`markdown_roundtrip`).
+
 ## [0.2.0] — 2026-07-02
 
 ### Added

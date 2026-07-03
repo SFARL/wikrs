@@ -31,7 +31,7 @@ cargo build --release
 ./target/release/wikrs --input dump.xml.bz2 --stats
 ```
 
-`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line; `--format sections` emits one JSON object per page with the article split into flat, level-tagged sections — `{"title", "sections": [{"level", "heading", "text"}]}` — ready for RAG chunking (`level` = the heading's `=` count, lead section is `level: 0`). Both `.xml` and multistream `.xml.bz2` are accepted. The default **`ast`** engine (Stage 2 parser: structured, honest diagnostics) handles real articles; pass `--engine strip` for the Stage 1 fast/lossy path.
+`--format text` (default) emits one article's plain text per record; `--format jsonl` emits `{"title":…,"text":…}` per line; `--format sections` emits one JSON object per page with the article split into flat, level-tagged sections — `{"title", "sections": [{"level", "heading", "text"}]}` — ready for RAG chunking (`level` = the heading's `=` count, lead section is `level: 0`); `--format markdown` emits GFM markdown per page (`# title` + structure-preserving body: headings, links, lists, tables; out-of-range constructs appear as visible ` ```wikitext ` fenced blocks). Markdown output is **conformance-tested by construction**: a round-trip harness asserts that an independent GFM parser (pulldown-cmark) reads every emitted document back to exactly the structure the AST declares — over all 1,071 MediaWiki parserTests inputs and a fuzzer. Both `.xml` and multistream `.xml.bz2` are accepted. The default **`ast`** engine (Stage 2 parser: structured, honest diagnostics) handles real articles; pass `--engine strip` for the Stage 1 fast/lossy path.
 
 The CLI **streams** the dump in bounded batches — memory is bounded regardless of dump size — and a dump read/decode error is a **hard error with a real exit code**, never a silently skipped page. For a *multistream* dump, pass the companion index via `--index` to decode the bz2 streams **in parallel**:
 
@@ -77,7 +77,7 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 |------:|------|--------|
 | **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (shipped in 0.1.0) |
 | **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~49% coverage; **now the CLI default**) |
-| **3** | LLM-facing output — sections JSONL for RAG chunking (shipped), Markdown with a round-trip conformance harness (next) | 🛠 in progress (`--format sections` landed) |
+| **3** | LLM-facing output — sections JSONL for RAG chunking + GFM Markdown with a round-trip conformance harness | ✅ shipped (`--format sections` in 0.2.0, `--format markdown` next release) |
 
 The headline metric: a **precision/coverage differential vs Parsoid** on real pages (now landing — see [Benchmarks](#benchmarks--test-status)), plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
 
@@ -85,7 +85,7 @@ The headline metric: a **precision/coverage differential vs Parsoid** on real pa
 
 > Kept current on every change via the project's `wikrs-dev-workflow` skill. Methodology: [docs/TESTING.md](docs/TESTING.md).
 
-_Last updated: 2026-07-02_
+_Last updated: 2026-07-03_
 
 - **Tests:** green — `cargo test --all-features`
 - **⚡ vs WikiExtractor** (end-to-end, identical `bench-compare` harness): on the **full real simplewiki dump** (1.67 GB, 281,799 articles, 2026-06 snapshot, 10-core Apple Silicon) wikrs is **~32× faster** — 5.2 s / **322 MB/s** vs WikiExtractor 164 s / 10.2 MB/s. Single-core, wikrs is **~150 MiB/s** end-to-end (it parallelises across cores; WikiExtractor streaming to one stdout does not). On the original 8.3 MB *synthetic* dump the figure was ~22× — **conservative, not inflated**: tiny inputs are dominated by wikrs's process-start overhead (a 16 MB slice shows only ~5× for the same reason), so the real full-dump gap is *wider*. **Fairness:** WikiExtractor ran with its **default parallelism** (`cpu_count() − 1` = 9 worker processes on the test machine; we verified its default beats `--processes 1` by ~2.2×), so this is parallel-vs-parallel on identical hardware, not wikrs-parallel vs WE-single-core. Reproduce: `cargo xtask bench-compare <dump.xml>` (real) or `cargo xtask make-sample-dump && cargo xtask bench-compare target/bench-dump.xml` (synthetic).

@@ -25,6 +25,10 @@ enum Format {
     /// Stage 3 (LLM output): one JSON object per page with flat, level-tagged
     /// sections for RAG chunking (requires the `ast` engine).
     Sections,
+    /// Stage 3 (LLM output): GFM markdown per page — `# title` plus a
+    /// structure-preserving body, validated by a round-trip conformance
+    /// harness (requires the `ast` engine).
+    Markdown,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -66,10 +70,14 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    if cli.format == Format::Sections && matches!(cli.engine, Engine::Strip) {
-        anyhow::bail!("--format sections needs the AST; use --engine ast (the default)");
+    let ast_only = matches!(cli.format, Format::Sections | Format::Markdown);
+    if ast_only && matches!(cli.engine, Engine::Strip) {
+        anyhow::bail!(
+            "--format {:?} needs the AST; use --engine ast (the default)",
+            cli.format
+        );
     }
-    if cli.format == Format::Sections && cli.stats {
+    if ast_only && cli.stats {
         anyhow::bail!("--stats measures plain-text conversion; use --format text or jsonl");
     }
 
@@ -113,10 +121,15 @@ fn main() -> anyhow::Result<()> {
             .into_par_iter()
             .map(|p| {
                 let text = match (cli.format, cli.engine) {
-                    // The whole JSON line is built here: sectioning needs the
-                    // AST, which does not outlive this closure.
+                    // The whole output record is built here: sectioning and
+                    // markdown need the AST, which does not outlive this
+                    // closure.
                     (Format::Sections, _) => {
                         output::to_sections_jsonl(&p.title, &parser::parse(&p.text).nodes)
+                    }
+                    (Format::Markdown, _) => {
+                        let parsed = parser::parse(&p.text);
+                        output::to_markdown(&p.title, &render::markdown(&parsed.nodes))
                     }
                     (_, Engine::Strip) => extract::strip(&p.text),
                     (_, Engine::Ast) => render::plain(&parser::parse(&p.text).nodes),
@@ -133,7 +146,7 @@ fn main() -> anyhow::Result<()> {
                 }
             } else {
                 match cli.format {
-                    Format::Text | Format::Sections => writeln!(w, "{text}")?,
+                    Format::Text | Format::Sections | Format::Markdown => writeln!(w, "{text}")?,
                     Format::Jsonl => writeln!(w, "{}", output::to_jsonl(title, text))?,
                 }
             }

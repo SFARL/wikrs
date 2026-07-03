@@ -207,3 +207,38 @@ fn sections_format_rejects_strip_engine_and_stats() {
     let out = run(&["--format", "sections", "--stats"], xml, "s2.xml");
     assert!(!out.status.success(), "stats+sections must be an error");
 }
+
+#[test]
+fn markdown_format_renders_structured_pages() {
+    let xml = "<mediawiki><page><title>A*B</title><ns>0</ns>\
+        <revision><text>'''Earth''' is a [[Planet|planet]].\n\n== History ==\n\nOld.</text>\
+        </revision></page></mediawiki>";
+    let out = run(&["--format", "markdown"], xml, "md.xml");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8(out.stdout).unwrap();
+    assert!(s.contains("# A\\*B"), "escaped title as h1: {s}");
+    assert!(
+        s.contains("**Earth** is a [planet](./Planet)."),
+        "body: {s}"
+    );
+    assert!(s.contains("## History"), "section heading: {s}");
+}
+
+#[test]
+fn markdown_format_rejects_strip_engine_and_stats() {
+    let xml = "<mediawiki><page><title>T</title><ns>0</ns>\
+        <revision><text>body</text></revision></page></mediawiki>";
+    let out = run(
+        &["--format", "markdown", "--engine", "strip"],
+        xml,
+        "m1.xml",
+    );
+    assert!(!out.status.success(), "strip+markdown must be an error");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("ast"));
+    let out = run(&["--format", "markdown", "--stats"], xml, "m2.xml");
+    assert!(!out.status.success(), "stats+markdown must be an error");
+}

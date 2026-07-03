@@ -797,3 +797,14 @@
 - **Tests:** 95 全绿、fmt/clippy 干净、ratchet 不退。
 - **Benchmark（空闲机复测,兑现 M2 的待复测）:** 参照 ~300、strip ~117、**ast ~118 MiB/s**;ast/参照比值 0.393 vs 历史 0.392——一致,整体 ~2-5% 下移为机器热状态,判定无回归成立。
 - **Regression?** none（比值背书）。
+
+---
+
+## [2026-07-03] Stage 3 M4：CLI `--format markdown` + 快照 + 全量验收（M 线收工,DoD 4/4）
+
+- **Change:** `Format::Markdown` 第四个格式值——每页 `output::to_markdown`:转义 `# title` + 空行 + `render::markdown` 正文（标题转义**复用渲染器本身**——单 Text 节点过一遍 render::markdown,转义路径唯一,不另写第二份）。`ast_only` 边界拒绝合并 sections/markdown 两分支（strip 无 AST、stats 防歪曲,报错文案带修法）。
+- **Tests（TDD 先红后绿）:** CLI e2e ×2（`# A\*B` 转义标题、`**Earth** is a [planet](./Planet).` 正文、`## History`;strip/stats 拒绝对）+ `output::to_markdown` 单测 + `tests/markdown_snapshots.rs` insta 快照（人眼层:harness 证明"意思对",快照证明"好读"）。**95 测试全绿**、fmt/clippy 干净、ratchet 不退。
+- **真实验收:** 全量 simplewiki 281,799 页 `--format markdown` 端到端 **6.86s**（与 15 分钟 fuzz 并行抢核下测得,上界）,607 MB 输出;抽查 April/August:标题层级、内链 `./Page_title`、加粗、列表全部成形。
+- **Benchmark:** criterion 见 M3 条（ast ~118,比值背书无回归);markdown 路径只在新格式分支。
+- **Regression?** none。
+- **M 线 DoD 4/4 全勾**（M1 先红后绿、M2 fuzz 零 crash、M3 可见标记、M4 快照+CLI）。**0.3.0 发布就绪**——待用户指令走 0.2.0 同款机械流程。

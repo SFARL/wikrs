@@ -1,0 +1,18 @@
+---
+source: tests/markdown_snapshots.rs
+assertion_line: 26
+expression: "render::markdown(&parsed.nodes)"
+---
+**Earth** is the [third planet](./Planet) from the Sun.
+
+## History
+
+Formed long ago. See [the overview](https://example.org/overview).
+
+- accretion of [planetesimal](./planetesimal)s
+- differentiation into a [core](./planetary_core)
+
+The planet has **two** moons.
+
+| Property | Value |
+| --- | --- |

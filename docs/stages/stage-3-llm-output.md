@@ -2,7 +2,7 @@
 
 # Stage 3 — LLM 取向的结构化输出（sections JSONL + Markdown）
 
-**状态:** sections 已发布（v0.2.0）· Markdown 未开工 · **日期:** 2026-07-02 · **定位:** Stage 2 AST 的 LLM 消费面
+**状态:** sections 已发布（v0.2.0）· Markdown 已落地（待发 0.3.0）· **日期:** 2026-07-03 · **定位:** Stage 2 AST 的 LLM 消费面
 
 > 取代原 [stage-3-html.md](stage-3-html.md)（HTML 方案，已否决——见下"决策史"）。
 > 设计见 [../DESIGN.md](../DESIGN.md)；测试见 [../TESTING.md](../TESTING.md)。
@@ -72,11 +72,11 @@
 - [x] **S2** CLI 端到端：真实二进制输出逐行可 `serde_json` 回解、字段正确。
 - [x] **S3** 全量 simplewiki 跑通（281,799 页 **0 坏行**、平均 3.3 sections/页、端到端 4.81s）；criterion 无回归。
 
-**markdown（下一步）：**
-- [ ] **M1** 往返 harness 存在且先红后绿（pulldown-cmark 独立判据）。
-- [ ] **M2** fuzz 往返性质零 crash/零断言失败。
-- [ ] **M3** `Unsupported` 可见标记与诊断一致。
-- [ ] **M4** 快照锁代表性页面；CLI `--format markdown`。
+**markdown（2026-07-03 落地）：**
+- [x] **M1** 往返 harness 存在且先红后绿（pulldown-cmark 独立判据）。（先红：手工 9/9 + parserTests 805/1071 失败有案可查；后绿：1071/1071）
+- [x] **M2** fuzz 往返性质零 crash/零断言失败。（fuzz 驱动修掉 8 类真问题——空行表格、NUL、URL mojibake、嵌套链接、`!`+链接成图片、`|` 拼表格、空项打断段落、URL 反斜杠——契约表同步进计划文档 §0）
+- [x] **M3** `Unsupported` 可见标记与诊断一致。（```` ```wikitext ```` fenced 块逐字保源，fence 自适应加长）
+- [x] **M4** 快照锁代表性页面；CLI `--format markdown`。（insta + CLI e2e + 全量 simplewiki 跑通）
 
 ## 风险 / 提醒
 

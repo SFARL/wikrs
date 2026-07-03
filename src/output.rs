@@ -28,6 +28,25 @@ struct Section {
     text: String,
 }
 
+/// One markdown document per page: escaped `# title`, blank line, body.
+/// Title escaping reuses the renderer's own rules via a single-Text render —
+/// one escaping path, no drift.
+pub fn to_markdown(title: &str, body: &str) -> String {
+    use std::borrow::Cow;
+    let title_md =
+        crate::render::markdown(&[Node::Paragraph(vec![Node::Text(Cow::Borrowed(title))])]);
+    let mut out = String::with_capacity(title_md.len() + body.len() + 8);
+    out.push_str("# ");
+    out.push_str(&title_md);
+    out.push('\n');
+    if !body.is_empty() {
+        out.push('\n');
+        out.push_str(body);
+    }
+    out.push('\n');
+    out
+}
+
 /// One JSON object per line with the page split into flat, level-tagged
 /// sections — the RAG-chunking contract pinned in
 /// `docs/stages/stage-3-llm-output.md`. Every top-level `Heading` starts a new
@@ -161,6 +180,14 @@ mod tests {
         );
         assert_eq!(secs[1]["heading"].as_str(), Some("History"));
         assert_eq!(secs[2]["level"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn markdown_page_has_escaped_h1_then_body() {
+        assert_eq!(
+            to_markdown("A*B", "**Earth** is here."),
+            "# A\\*B\n\n**Earth** is here.\n"
+        );
     }
 
     #[test]
