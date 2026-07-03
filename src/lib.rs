@@ -42,6 +42,8 @@ pub mod render;
 #[doc(hidden)]
 pub mod diff;
 #[doc(hidden)]
+pub mod mdnorm;
+#[doc(hidden)]
 pub mod output;
 
 // Crate-internal machinery (tokenizer feeds parser; entities feed render/strip).

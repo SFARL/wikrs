@@ -35,6 +35,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 insta = "1.48.0"
 parse_wiki_text = "0.1.5"
+pulldown-cmark = "0.13"
 # added per-task by the Stage 1 plan (e.g. insta)
 
 [workspace]
