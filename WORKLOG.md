@@ -740,3 +740,12 @@
 - **Benchmark:** criterion 噪声内（ast ~123 MiB/s、参照 ~305）;sections 只在新格式分支,不碰既有热路径。
 - **Regression?** none。
 - **下一步（M1-M4）:** `render::markdown`——先建 pulldown-cmark 往返 harness（dev-dep）,对桩渲染器跑红,再写语义;fuzz 同一性质;`Unsupported` 用 fenced block 可见标记;CLI `--format markdown`。
+
+---
+
+## [2026-07-02] v0.2.0 发布（sections JSONL 上线）
+
+- **发布内容:** `--format sections`（LLM/RAG 结构化输出）——0.1.1 → **0.2.0**（新功能,minor bump;xtask path-dep 同步）。
+- **机械动作全绿:** 预检三件套（87 测试）→ bump 提交 → `cargo publish --dry-run` 干净 → push main（18fd5bf..f00eb34）→ tag `v0.2.0` → `cargo publish` **已上 crates.io**（API 验证 max_version=0.2.0）→ GitHub Release 建好（notes 含 schema 契约与全量验收数字）。
+- **Tests/Benchmark:** 发布不涉代码;HEAD 即 39819bd 的验证状态（87 绿、ast ~123 MiB/s）。
+- **Regression?** none。
