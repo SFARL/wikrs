@@ -54,7 +54,9 @@
 
 **为什么这里不需要外部 harness（与 ground-truth-first 不矛盾）：** sections 是 **AST 的序列化**，不是向另一种标记语言的**翻译**——没有任何"我们的约定 vs 权威约定"的映射决策（不存在"`==` 该出几个 `#`"这类问题）。text/heading 走的 `render::plain` 已被 Stage 2 差分锚定；level 是 parser 的既有受测语义。自写单测即充分判据。
 
-### `render::markdown`（下一步，另一 session）
+### `render::markdown`（开工中）
+
+**Code-complete TDD 实施计划：[../superpowers/plans/2026-07-02-markdown-roundtrip.md](../superpowers/plans/2026-07-02-markdown-roundtrip.md)**（§0 是"准确性怎么比"的完整机制——规范形 NF、它抓什么、抓不了什么、防循环论证）。
 
 **Harness 先行，先红后绿：**
 
