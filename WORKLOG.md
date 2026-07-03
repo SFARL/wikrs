@@ -749,3 +749,14 @@
 - **机械动作全绿:** 预检三件套（87 测试）→ bump 提交 → `cargo publish --dry-run` 干净 → push main（18fd5bf..f00eb34）→ tag `v0.2.0` → `cargo publish` **已上 crates.io**（API 验证 max_version=0.2.0）→ GitHub Release 建好（notes 含 schema 契约与全量验收数字）。
 - **Tests/Benchmark:** 发布不涉代码;HEAD 即 39819bd 的验证状态（87 绿、ast ~123 MiB/s）。
 - **Regression?** none。
+
+---
+
+## [2026-07-03] Stage 3 M1：markdown 往返 harness 落地（对桩渲染器，刻意全红）⭐
+
+- **机制（计划 §0，回答"准确性怎么比"）:** 双侧映射进共享规范形 NF 再断言相等——wikrs 侧 `mdnorm::from_ast`（声明意图,人审契约表）,pulldown 侧 `我们的 markdown → pulldown-cmark 事件流 → NF`（独立 GFM 实现眼中的实际含义）。渲染器不能给自己打分;层级错、转义漏、结构走样全部由外人裁决。与渲染器只共享 md_href+实体解码（本身就是契约条目）,需要独立裁决的（转义/缩进/fence/层级算术）不共享。
+- **Change:** `src/mdnorm.rs`（doc-hidden:NF 类型、from_ast、normalize_inlines——空白折叠+同格式合并+拍平 Bold/Italic 嵌套序、md_href）;`render::markdown` 桩（空串）;`tests/support/pulldown_nf.rs`（事件流→NF,`#[path]` 与将来 fuzz 共享;我们从不发的事件一律 panic 响）;`tests/markdown_roundtrip.rs`（手工 9 用例含转义炸弹 + 样例文章 + parserTests 全语料,软跳过策略同既有 harness）。pulldown-cmark 0.13.4 仅 dev-dep,不进发布依赖。
+- **红的证据（M1 完成标志,量化）:** 手工 **9/9 FAIL**、样例文章 FAIL、parserTests **805/1071 FAIL**（266 平凡通过=空 AST）。mismatch 输出带三段（markdown/intent/actual）,M2 靠它逐个修。
+- **Tests:** 61 lib 绿(mdnorm 编译入库);harness 三测刻意红,其余全绿;fmt/clippy 干净。
+- **Benchmark:** 不涉（桩+测试设施,热路径未动）。
+- **Regression?** none。
