@@ -85,6 +85,7 @@ Every module tests in place: `dump` (small XML in; page splitting / redirect ski
 | **`parse_wiki_text`** | the most serious community Rust parser (0.1.5/2018, unmaintained); speed baseline | `cargo bench --bench compare` (dev-dependency, **not shipped**) | ✅ sample article ~306 MiB/s; alongside `wikrs_strip` (~122) and `wikrs_ast` (~120) |
 | **WikiExtractor** | the de-facto Python extractor; speed + behavior baseline | `tools/wikiextractor/setup.sh` (venv, **pinned to Python 3.10**) → `cargo xtask bench-compare <dump>` | ✅ full real simplewiki (1.67 GB): **wikrs ~32× faster** (322 vs 10.2 MB/s, WikiExtractor at its default 9-process parallelism; the 8.3 MB synthetic dump shows ~22× — small inputs are dominated by wikrs's startup overhead) |
 | **Bliki** (Java, via XWiki) | mature wikitext→HTML engine (with **template expansion**); upstream abandoned | `tools/bliki/setup.sh` (JDK + coursier) → `cargo xtask bench-bliki` | ✅ sample ~**0.4 MB/s** (wikrs strip ~122 — roughly **300×** apart; it does more, far slower) |
+| **pulldown-cmark** (round-trip judge) | independent GFM implementation; `--format markdown`'s conformance oracle — our emitted markdown must parse back to exactly the AST's declared normal form (dev-dependency only, never shipped) | `cargo test --test markdown_roundtrip` (+ `cargo +nightly fuzz run markdown_roundtrip`) | ✅ hand cases + sample article + **1071/1071 parserTests inputs**; fuzz **2.14M execs clean** |
 
 > `parse_wiki_text` / WikiExtractor / **Bliki** are **dev-side comparisons only** — never shipped, their licenses never touch wikrs (Bliki's jars and build products are gitignored). parserTests is GPL, hence downloaded at test time and never vendored ([DESIGN.md](DESIGN.md) §11; prior-art table in §12).
 > WikiExtractor 3.0.6 uses inline `(?i)` regex flags that error on Python 3.11+, hence the 3.10 pin (managed by uv; system Python untouched).
@@ -98,6 +99,8 @@ Every module tests in place: `dump` (small XML in; page splitting / redirect ski
 | Run parserTests loading/coverage (1077 cases) | `cargo test --test parser_tests` |
 | Review snapshot diffs | `cargo insta review` |
 | Fuzz the default engine | `cargo +nightly fuzz run parse` |
+| Markdown round-trip conformance | `cargo test --test markdown_roundtrip` |
+| Fuzz the markdown round-trip property | `cargo +nightly fuzz run markdown_roundtrip` |
 | Criterion benchmark (all baselines) | `cargo bench --bench compare` |
 | Install WikiExtractor (Python baseline) | `tools/wikiextractor/setup.sh` |
 | wikrs vs WikiExtractor end-to-end | `cargo xtask bench-compare <dump>` |
@@ -117,6 +120,6 @@ Every module tests in place: `dump` (small XML in; page splitting / redirect ski
 |-------|-----------|-----|
 | 1 extractor | unit + snapshots + **vs-WikiExtractor benchmark** | behavior aligned with WikiExtractor (itemized) and **an order of magnitude faster**, reproducibly |
 | 2 AST | all four layers + the differential report | parserTests coverage on target + the precision/coverage numbers (precision-led) + fuzz clean |
-| 3 LLM output | sections: unit + CLI e2e + full-dump line validation (**shipped 0.2.0**: 281,799 pages, 0 bad lines); markdown: **round-trip harness first** (render → pulldown-cmark → compare vs source AST), then fuzz the same property | sections schema exact per `stages/stage-3-llm-output.md`; markdown round-trip structural equality inside the declared range |
+| 3 LLM output | sections: unit + CLI e2e + full-dump line validation (**shipped 0.2.0**: 281,799 pages, 0 bad lines); markdown: **round-trip harness first** (render → pulldown-cmark → compare vs source AST), then fuzz the same property (**landed 2026-07-03**: harness red 805/1071 against the stub → **1071/1071 green**; fuzz drove 8 additional fixes, final run **2,139,005 execs clean**) | sections schema exact per `stages/stage-3-llm-output.md`; markdown round-trip structural equality inside the declared range (normal-form contract: `docs/superpowers/plans/2026-07-02-markdown-roundtrip.md` §0) |
 
 Detailed checkpoints live in each stage doc.

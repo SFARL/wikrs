@@ -7,7 +7,7 @@
 > The `dump` module gained XML entity (GeneralRef) handling and **parallel multistream decoding** (`open_multistream` + `--index`).
 > CLI: bounded-batch streaming (O(batch) memory), hard failure on dump errors.
 > **Scale validation: the full English Wikipedia — 7,189,653 pages, 98.0% clean, 7.4 minutes, zero crashes (5.1× via `--index`).**
-> **Stage 3 re-scoped to LLM-facing output** ([stages/stage-3-llm-output.md](stages/stage-3-llm-output.md)): `--format sections` (flat, level-tagged sections JSONL for RAG chunking) **shipped in 0.2.0**; `render::markdown` is next, anchored by a pulldown-cmark round-trip harness. The HTML renderer is descoped (no consumer; first implementation archived on `feat/stage3-html`).
+> **Stage 3 re-scoped to LLM-facing output** ([stages/stage-3-llm-output.md](stages/stage-3-llm-output.md)): `--format sections` (flat, level-tagged sections JSONL for RAG chunking) **shipped in 0.2.0**; `--format markdown` **landed 2026-07-03** (ships in 0.3.0), correctness anchored by a **round-trip conformance harness** — pulldown-cmark must read every emitted document back to the exact normal form the AST declares (1071/1071 parserTests inputs green; fuzzed, 2.14M execs clean). The HTML renderer is descoped (no consumer; first implementation archived on `feat/stage3-html`).
 > The current architectural truth lives in [WORKLOG.md](../WORKLOG.md) (per-change evidence, Chinese) and the README scoreboard; the rest of this document is the founding design, kept as decision background.
 
 ---
@@ -79,7 +79,7 @@ This is a structural problem no amount of engineering effort removes; the design
 
                          ┌────────── Stage 3 (LLM output; was: html) ────────┐
                               AST ──► output::to_sections_jsonl  (shipped 0.2.0)
-                                 └──► render::markdown           (planned next)
+                                 └──► render::markdown           (0.3.0; round-trip-verified)
                          └──────────────────────────────────────────────────┘
 ```
 
@@ -105,7 +105,8 @@ wikrs/
 │   ├── tokenizer.rs            # Stage 2: inline tokenizer (handwritten, single-pass linear) ✓
 │   ├── parser.rs               # Stage 2: block-level + inline assembly → AST + diagnostics ✓
 │   ├── ast.rs                  # `Node<'a>` (Cow, borrow-friendly) ✓
-│   ├── render.rs               # `render::plain` (`markdown` planned) ✓
+│   ├── render.rs (+ render/)   # `render::plain` + `render::markdown` ✓
+│   ├── mdnorm.rs               # round-trip normal form (doc-hidden test plumbing) ✓
 │   └── diag.rs                 # `Diagnostic` / `Severity` / error codes ✓
 ├── benches/compare.rs          # criterion: parse_wiki_text vs wikrs_strip vs wikrs_ast
 ├── fuzz/                       # cargo-fuzz targets (strip, parse; own workspace)
