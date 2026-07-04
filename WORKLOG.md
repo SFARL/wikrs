@@ -808,3 +808,12 @@
 - **Benchmark:** criterion 见 M3 条（ast ~118,比值背书无回归);markdown 路径只在新格式分支。
 - **Regression?** none。
 - **M 线 DoD 4/4 全勾**（M1 先红后绿、M2 fuzz 零 crash、M3 可见标记、M4 快照+CLI）。**0.3.0 发布就绪**——待用户指令走 0.2.0 同款机械流程。
+
+---
+
+## [2026-07-03] v0.3.0 发布（round-trip-verified markdown 上线）
+
+- **发布内容:** `--format markdown` + 往返 conformance harness——0.2.0 → **0.3.0**（新功能,minor;xtask path-dep 同步）。
+- **首次按 docs/RELEASING.md 手册执行,全绿:** 预检五关（三件套 95 绿、基准比值背书、markdown_roundtrip fuzz 15min 214 万次零 crash、全量 simplewiki smoke——均为当日 M 线既有记录）→ 双文件 bump → CHANGELOG 定版 → `cargo publish --dry-run` 干净（64 文件/487.6 KiB）→ push → **CI 绿后**才 tag `v0.3.0` → `cargo publish` **已上 crates.io**（API 验证 max_version=0.3.0）→ GitHub Release 建好（notes 含 1071/1071 与 fuzz 数字）。
+- **Tests/Benchmark:** 发布不涉代码;HEAD 即 M4 的验证状态（95 绿、ast ~118 MiB/s）。
+- **Regression?** none。
