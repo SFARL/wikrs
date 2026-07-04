@@ -77,7 +77,7 @@ Anything beyond this is honestly out of scope for Stage 1 — structure-preservi
 |------:|------|--------|
 | **1** | Plain-text extractor — wikitext → clean text, benchmarked against WikiExtractor | ✅ done (shipped in 0.1.0) |
 | **2** | Structured AST + diagnostics — preserves structure, warns on pathological input | 🛠 in progress (~49% coverage; **now the CLI default**) |
-| **3** | LLM-facing output — sections JSONL for RAG chunking + GFM Markdown with a round-trip conformance harness | ✅ shipped (`--format sections` in 0.2.0, `--format markdown` next release) |
+| **3** | LLM-facing output — sections JSONL for RAG chunking + GFM Markdown with a round-trip conformance harness | ✅ shipped (`--format sections` in 0.2.0, `--format markdown` in 0.3.0) |
 
 The headline metric: a **precision/coverage differential vs Parsoid** on real pages (now landing — see [Benchmarks](#benchmarks--test-status)), plus a clear-eyed account of the rest. See [docs/TESTING.md](docs/TESTING.md).
 

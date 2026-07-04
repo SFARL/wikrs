@@ -2,7 +2,7 @@
 
 Notable changes to wikrs. Loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning is SemVer.
 
-## [Unreleased]
+## [0.3.0] — 2026-07-03
 
 ### Added
 - **`--format markdown`** (Stage 3, LLM-facing output): one GFM markdown document per page — escaped `# title` plus a structure-preserving body (headings from `=` count, `**bold**`/`*italic*`, `[label](./Page_title)` links, nested lists, pipe tables, fenced code). Out-of-range constructs render as visible ` ```wikitext ` fenced blocks carrying the verbatim source — never silently dropped. Requires the `ast` engine; `--engine strip` or `--stats` combinations are explicit errors.
