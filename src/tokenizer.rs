@@ -177,27 +177,41 @@ fn tag_span(s: &str, i: usize) -> Option<TagSpan<'_>> {
     match tag_kind(&rest[name_start..j].to_ascii_lowercase()) {
         TagKind::Ref => ref_end(rest).map(|e| TagSpan::Drop(i + e)),
         TagKind::Nowiki => nowiki_span(rest).map(|(inner, e)| TagSpan::Keep(inner, i + e)),
-        TagKind::Transparent => tag_close(rest, j).map(|e| TagSpan::SkipTag(i + e)),
-        TagKind::Void => tag_close(rest, j).map(|e| TagSpan::Space(i + e)),
+        TagKind::Transparent => tag_open_end(rest, j).map(|(e, _)| TagSpan::SkipTag(i + e)),
+        TagKind::Void => tag_open_end(rest, j).map(|(e, _)| TagSpan::Space(i + e)),
         TagKind::Unsupported => None,
     }
 }
 
-/// From `rest` (which starts at `<`), with `j` past the tag name, return the
-/// offset within `rest` just past the tag's closing `>`. Skips any `>` inside a
-/// quoted attribute value (`<div style="a>b">` closes at the second `>`, not the
-/// first) — without this, a transparent tag with a complex attribute would mangle
-/// its body. `None` if the tag is never closed.
-fn tag_close(rest: &str, j: usize) -> Option<usize> {
+/// From `rest` (which starts at `<`), with `from` past the tag name, locate the
+/// tag's closing `>`: (offset within `rest` just past `>`, is it self-closing
+/// `… />`?). Skips `>` inside quoted attribute values (`<div style="a>b">`
+/// closes at the second `>`; `<ref name="a>b" />` IS self-closing). This is the
+/// one close scanner shared by every tag consumer — `tag_span`, `ref_end`,
+/// Stage 1's `skip_ref`, the parser's `ref_opens_body` — so no engine keeps a
+/// naive `find('>')` that mistakes a quoted `>` for the tag close and swallows
+/// the text after it. `None` if the tag is never closed.
+pub(crate) fn tag_open_end(rest: &str, from: usize) -> Option<(usize, bool)> {
     let b = rest.as_bytes();
-    let mut k = j;
+    let mut k = from;
     let mut quote = 0u8; // 0 = outside quotes, else the open quote byte
+    let mut last = 0u8; // last non-whitespace byte seen outside quotes
     while k < b.len() {
-        match b[k] {
-            q if q == quote => quote = 0,
-            b'"' | b'\'' if quote == 0 => quote = b[k],
-            b'>' if quote == 0 => return Some(k + 1),
-            _ => {}
+        let c = b[k];
+        if quote != 0 {
+            if c == quote {
+                quote = 0;
+                last = c;
+            }
+        } else if (c == b'"' || c == b'\'') && last == b'=' {
+            // Quotes open a value only in value position (right after `=`) —
+            // an apostrophe inside an unquoted value (`name=O'Brien`) is data,
+            // not an unterminated quote that would swallow the real `>`.
+            quote = c;
+        } else if c == b'>' {
+            return Some((k + 1, last == b'/'));
+        } else if !c.is_ascii_whitespace() {
+            last = c;
         }
         k += 1;
     }
@@ -214,12 +228,12 @@ fn ref_end(rest: &str) -> Option<usize> {
     if !matches!(b.get(4), Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')) {
         return None;
     }
-    let gt = rest.find('>')?;
-    if rest[..gt].trim_end().ends_with('/') {
-        return Some(gt + 1);
+    let (gt, self_closing) = tag_open_end(rest, 4)?;
+    if self_closing {
+        return Some(gt);
     }
-    match find_ci(&rest[gt + 1..], "</ref>") {
-        Some(c) => Some(gt + 1 + c + "</ref>".len()),
+    match find_ci(&rest[gt..], "</ref>") {
+        Some(c) => Some(gt + c + "</ref>".len()),
         None => Some(rest.len()),
     }
 }
@@ -321,5 +335,33 @@ mod tests {
         // inline templates are dropped (nesting-aware), prose around them kept
         assert_eq!(inline("a{{t|x}}b"), vec![Text("a"), Text("b")]);
         assert_eq!(inline("a{{o{{i}}}}b"), vec![Text("a"), Text("b")]);
+    }
+
+    #[test]
+    fn ref_with_quoted_gt_does_not_swallow_tail() {
+        // Same quote-awareness the transparent-tag path already has: the `>`
+        // inside `name="a>b"` is not the tag close, and the ` B` after the
+        // self-closing ref must survive instead of being swallowed to EOF.
+        assert_eq!(
+            inline(r#"A <ref name="a>b" /> B"#),
+            vec![Text("A "), Text(" B")]
+        );
+        assert_eq!(
+            inline(r#"A <ref name="a>b">cite</ref> B"#),
+            vec![Text("A "), Text(" B")]
+        );
+    }
+
+    #[test]
+    fn tag_open_end_is_quote_aware() {
+        assert_eq!(tag_open_end("<div style=\"a>b\">", 4), Some((17, false)));
+        assert_eq!(tag_open_end("<ref name=\"a>b\" />", 4), Some((18, true)));
+        // a quoted trailing slash is part of the value, not a self-close
+        assert_eq!(tag_open_end("<ref name=\"a/\">", 4), Some((15, false)));
+        // inside an unterminated quote there is no tag close at all
+        assert_eq!(tag_open_end("<ref name=\"unclosed", 4), None);
+        // quotes only open in value position: an apostrophe inside an
+        // UNQUOTED value is data — the `>` still closes the tag
+        assert_eq!(tag_open_end("<ref name=O'Brien>x", 4), Some((18, false)));
     }
 }

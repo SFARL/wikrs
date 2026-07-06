@@ -312,8 +312,8 @@ fn ref_opens_body(s: &str) -> bool {
     if !matches!(b.get(4), Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')) {
         return false;
     }
-    match s.find('>') {
-        Some(gt) => !s[..gt].trim_end().ends_with('/'),
+    match tokenizer::tag_open_end(s, 4) {
+        Some((_, self_closing)) => !self_closing,
         None => true,
     }
 }

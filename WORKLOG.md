@@ -826,3 +826,12 @@
 - **Tests:** 先红后绿 ×5(jsonl 结构化诊断、sections 诊断、stats 分层、text stderr 摘要、fail-on 分层门)+ strip 无键护栏 + output 单测 2 新;全量 103 绿(+1 ignored),fmt/clippy 干净。
 - **Benchmark:** 不涉热路径(main.rs/output.rs 序列化面);本轮基线存档 `--save before`:ast ~120.9 / strip ~118.2 / 参照 parse_wiki_text ~252.9 MiB/s。
 - **Regression?** none。
+
+---
+
+## [2026-07-06] Honesty 修复 2/7:quote-aware tag close 统一——`<ref name="a>b" />` 不再吞掉页面剩余内容
+
+- **Change:** tokenizer 的 quote-aware 关闭扫描提为共享 helper `tag_open_end(rest, from) -> (past_gt, self_closing)`,**四个**此前各自裸 `find('>')` 的消费者全部收拢:`tokenizer::ref_end`、Stage 1 `comments::skip_ref`、`parser::ref_opens_body`、Stage 1 `markup::strip_tags`(review 只点了前三处,第四处是统一时扫出来的同族)。原 bug:`<ref name="a>b" />` 的引号内 `>` 被当 tag close → 判成 non-self-closing 开 ref → 吞到下一个 `</ref>` 或**页面末尾**,零诊断。helper 带 `=`-门:引号只在属性值位置(紧跟 `=`)开启,未引号值里的撇号(`name=O'Brien`)是数据,不会反向把整个 tag 判成未闭合。
+- **Tests:** 先红后绿:comments/tokenizer 各 2 例吞尾 repro(self-closing + 带 body 两形态)、markup 属性尾漏(`b">` 泄漏)、helper 单测 5 例(quote 内 `>`、quoted `/` 非 self-close、未闭合引号、`=`-门)。全量 12 套件绿,ratchet 未动,fmt/clippy 干净。
+- **Benchmark(vs `--save before` 基线):** strip 118.7 MiB/s(−0.2%,噪声);**ast 120.9 → 127.0 MiB/s(+5.1%,p=0.00)**,对参照比值 0.478→0.498 背书非机器状态。参照 parse_wiki_text +1.4% 噪声。
+- **Regression?** none(反而提速)。

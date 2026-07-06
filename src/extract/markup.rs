@@ -26,10 +26,12 @@ fn strip_tags(s: &str) -> String {
     let mut rest = s;
     while let Some(i) = rest.find('<') {
         out.push_str(&rest[..i]);
-        rest = match rest[i..].find('>') {
-            Some(j) => &rest[i + j + 1..],
+        // quote-aware close scan shared with the tokenizer: a `>` inside a
+        // quoted attribute value is not the tag close (else its tail leaks).
+        rest = match crate::tokenizer::tag_open_end(&rest[i..], 1) {
+            Some((j, _)) => &rest[i + j..],
             None => {
-                out.push_str(&rest[i..]); // lone '<' with no '>': keep it
+                out.push_str(&rest[i..]); // lone '<' with no close: keep it
                 return out;
             }
         };
@@ -49,5 +51,12 @@ mod tests {
         assert_eq!(strip_markup("* one\n* two"), "one\ntwo");
         assert_eq!(strip_markup("# a\n## b"), "a\nb");
         assert_eq!(strip_markup("x <b>y</b> z"), "x y z");
+    }
+
+    #[test]
+    fn quoted_gt_in_attr_does_not_leak_attr_tail() {
+        // A `>` inside a quoted attribute value is not the tag close — the
+        // naive scan ended `<span style="a>` there and leaked `b">` as text.
+        assert_eq!(strip_markup(r#"x <span style="a>b">y</span> z"#), "x y z");
     }
 }

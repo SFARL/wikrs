@@ -40,12 +40,15 @@ fn skip_ref(tail: &str) -> Option<&str> {
         Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/') => {}
         _ => return None,
     }
-    let gt = tail.find('>')?;
-    if tail[..gt].trim_end().ends_with('/') {
-        return Some(&tail[gt + 1..]); // self-closing <ref … />
+    // quote-aware close scan shared with the tokenizer: a `>` inside a quoted
+    // attribute value must not end the tag (else the ` B` after
+    // `<ref name="a>b" />` is swallowed to the next </ref> — or to EOF).
+    let (gt, self_closing) = crate::tokenizer::tag_open_end(tail, 4)?;
+    if self_closing {
+        return Some(&tail[gt..]);
     }
-    match find_ci(&tail[gt + 1..], "</ref>") {
-        Some(c) => Some(&tail[gt + 1 + c + "</ref>".len()..]),
+    match find_ci(&tail[gt..], "</ref>") {
+        Some(c) => Some(&tail[gt + c + "</ref>".len()..]),
         None => Some(""), // unterminated: drop the remainder
     }
 }
@@ -93,6 +96,19 @@ mod tests {
         assert_eq!(strip_comments_refs("a<ref name=q>cite</ref>b"), "ab");
         assert_eq!(strip_comments_refs("a<ref name=q />b"), "ab");
         assert_eq!(strip_comments_refs("a<nowiki>[[x]]</nowiki>b"), "a[[x]]b");
+    }
+
+    #[test]
+    fn quoted_gt_in_ref_attr_does_not_swallow_tail() {
+        // The `>` inside a quoted attribute value is not the tag close. A naive
+        // `find('>')` saw `<ref name="a` as a non-self-closing open ref and
+        // swallowed everything to the next `</ref>` — or to the END OF THE PAGE
+        // when there is none. B must survive.
+        assert_eq!(strip_comments_refs(r#"A <ref name="a>b" /> B"#), "A  B");
+        assert_eq!(
+            strip_comments_refs(r#"A <ref name="a>b">cite</ref> B"#),
+            "A  B"
+        );
     }
 
     #[test]
