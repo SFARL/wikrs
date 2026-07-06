@@ -2,7 +2,7 @@
 
 # Stage 3 — LLM 取向的结构化输出（sections JSONL + Markdown）
 
-**状态:** sections 已发布（v0.2.0）· Markdown 已落地（待发 0.3.0）· **日期:** 2026-07-03 · **定位:** Stage 2 AST 的 LLM 消费面
+**状态:** sections 已发布（v0.2.0）· Markdown 已发布（v0.3.0）· **日期:** 2026-07-03 · **定位:** Stage 2 AST 的 LLM 消费面
 
 > 取代原 [stage-3-html.md](stage-3-html.md)（HTML 方案，已否决——见下"决策史"）。
 > 设计见 [../DESIGN.md](../DESIGN.md)；测试见 [../TESTING.md](../TESTING.md)。

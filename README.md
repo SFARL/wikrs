@@ -2,7 +2,7 @@
 
 **Fast, honest wikitext extraction and parsing — in Rust.**
 
-> **Status: 🚧 Stage 2 engine is the default.** wikitext → clean text, **RAG-ready sections JSONL** (new in 0.2.0), or a structured AST, with **honest diagnostics**, ~32× WikiExtractor, CLI, tested — **validated on the full English Wikipedia** (7.19M articles, 98.0% clean conversion, **7.4 minutes** on a laptop with parallel multistream decoding). ~49% of MediaWiki parserTests parse with zero diagnostics, climbing. **On [crates.io](https://crates.io/crates/wikrs)** — `cargo install wikrs` (CLI) or `cargo add wikrs` (library).
+> **Status: 🚧 Stage 2 engine is the default.** wikitext → clean text, **RAG-ready sections JSONL** (new in 0.2.0), or a structured AST, with **honest diagnostics that travel with the output** (structured `diagnostics` in the JSONL/sections records, `--stats` tiers, and a `--fail-on` exit gate — new in 0.4.0), ~32× WikiExtractor, CLI, tested — **validated on the full English Wikipedia** (7.19M articles, 98.0% clean conversion, **7.4 minutes** on a laptop with parallel multistream decoding). ~49% of MediaWiki parserTests parse with zero diagnostics, climbing. **On [crates.io](https://crates.io/crates/wikrs)** — `cargo install wikrs` (CLI) or `cargo add wikrs` (library).
 
 ---
 
