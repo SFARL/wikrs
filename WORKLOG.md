@@ -835,3 +835,12 @@
 - **Tests:** 先红后绿:comments/tokenizer 各 2 例吞尾 repro(self-closing + 带 body 两形态)、markup 属性尾漏(`b">` 泄漏)、helper 单测 5 例(quote 内 `>`、quoted `/` 非 self-close、未闭合引号、`=`-门)。全量 12 套件绿,ratchet 未动,fmt/clippy 干净。
 - **Benchmark(vs `--save before` 基线):** strip 118.7 MiB/s(−0.2%,噪声);**ast 120.9 → 127.0 MiB/s(+5.1%,p=0.00)**,对参照比值 0.478→0.498 背书非机器状态。参照 parse_wiki_text +1.4% 噪声。
 - **Regression?** none(反而提速)。
+
+---
+
+## [2026-07-06] Honesty 修复 3/7:cell_content 属性分割器——引号内 `]]`/`}}`/`|` 不再把属性垃圾漏进正文
+
+- **Change:** `parser::cell_content` 重写:¹深度改 `u32` + `saturating_sub`——旧版 `i32` 可被杂散 `]]`/`}}` 推成负数,此后真正的属性分隔 `|` 永远等不到 `depth==0`,整段属性垃圾(`data-x="]]" |` 之类)以零诊断漏进 cell 正文;²引号感知——带 `=`-门(与 tag_open_end 同规则):引号只在属性值位置开启,值内的 `]]`/`}}`/`|` 全部跳过,而 prose 里的撇号/引号(`it's fine`、`He said "hi"`)不改变现有分割行为。
+- **Tests:** 先红后绿:cell_content 单测 7 例(三个 review 指定 repro + 裸 `]]` 前缀 + 三个不变式护栏)+ 端到端 parse 表格泄漏 repro。全量绿(lib 70),ratchet 未动,fmt/clippy 干净。
+- **Benchmark(vs before 基线):** ast +3.4%(124.4 MiB/s);strip −1.4%、参照 −4.0% 同步下漂 → 机器状态噪声。README 表保持上轮 ~127,最后一轮统一复测定版。
+- **Regression?** none。

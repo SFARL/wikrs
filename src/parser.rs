@@ -375,29 +375,49 @@ fn parse_table(block: &str) -> Option<Node<'_>> {
 }
 
 /// A table cell's content: the part after the attribute pipe — the first `|` not
-/// inside `[[…]]` or `{{…}}` — or the whole cell if there is none. This is
-/// MediaWiki's own rule for separating cell attributes from cell content.
+/// inside `[[…]]`, `{{…}}`, or a quoted attribute value — or the whole cell if
+/// there is none. This is MediaWiki's own rule for separating cell attributes
+/// from cell content. Quotes count only in value position (right after `=`), so
+/// an apostrophe in prose never masks the separator; depths saturate at 0, so a
+/// stray `]]`/`}}` (e.g. inside a quoted value, or plain junk) can't go negative
+/// and hide the real separator — which leaked attribute junk as cell text.
 fn cell_content(cell: &str) -> &str {
     let b = cell.as_bytes();
-    let (mut link, mut tmpl) = (0i32, 0i32);
+    let (mut link, mut tmpl) = (0u32, 0u32);
+    let mut quote = 0u8; // 0 = outside, else the quote byte that opened a value
+    let mut last = 0u8; // last non-whitespace byte outside quotes
     let mut i = 0;
     while i < b.len() {
+        if quote != 0 {
+            if b[i] == quote {
+                quote = 0;
+                last = b[i];
+            }
+            i += 1;
+            continue;
+        }
         let two = i + 1 < b.len();
         if two && b[i] == b'[' && b[i + 1] == b'[' {
             link += 1;
             i += 2;
         } else if two && b[i] == b']' && b[i + 1] == b']' {
-            link -= 1;
+            link = link.saturating_sub(1);
             i += 2;
         } else if two && b[i] == b'{' && b[i + 1] == b'{' {
             tmpl += 1;
             i += 2;
         } else if two && b[i] == b'}' && b[i + 1] == b'}' {
-            tmpl -= 1;
+            tmpl = tmpl.saturating_sub(1);
             i += 2;
+        } else if (b[i] == b'"' || b[i] == b'\'') && last == b'=' && link == 0 && tmpl == 0 {
+            quote = b[i];
+            i += 1;
         } else if b[i] == b'|' && link == 0 && tmpl == 0 {
             return cell[i + 1..].trim();
         } else {
+            if !b[i].is_ascii_whitespace() {
+                last = b[i];
+            }
             i += 1;
         }
     }
@@ -1128,6 +1148,39 @@ mod tests {
             p.diagnostics.iter().any(|d| d.code == "U-TABLE"),
             "colspan grid should bail, got {:?}",
             p.diagnostics
+        );
+    }
+
+    #[test]
+    fn cell_attr_splitter_is_quote_aware_and_depth_safe() {
+        // A quoted attribute value may contain `]]`, `}}`, or `|` — none of
+        // them is the attribute/content separator. The old scanner let a stray
+        // `]]`/`}}` push the bracket depth NEGATIVE, so the real separator `|`
+        // was never recognized and the attribute junk leaked into the output
+        // as cell text (zero diagnostics).
+        assert_eq!(cell_content(r#" data-x="]]" | kept"#), "kept");
+        assert_eq!(cell_content(r#" data-x="}}" | kept"#), "kept");
+        assert_eq!(cell_content(r#" data-x="a|b" | kept"#), "kept");
+        // a stray closer OUTSIDE quotes must not mask the separator either
+        assert_eq!(cell_content("]] junk | kept"), "kept");
+        // unchanged behavior: no separator → the whole cell is content,
+        // and a `|` inside [[…]]/{{…}} still does not split
+        assert_eq!(cell_content("just content"), "just content");
+        assert_eq!(cell_content("[[a|b]] rest"), "[[a|b]] rest");
+        assert_eq!(cell_content(r#" style="x" | it's fine"#), "it's fine");
+    }
+
+    #[test]
+    fn table_cell_quoted_attr_closers_do_not_leak() {
+        let p = parse("{|\n| data-x=\"]]\" | kept || data-y=\"a|b\" | also\n|}");
+        let text = render::plain(&p.nodes);
+        assert!(
+            text.contains("kept") && text.contains("also"),
+            "lost cell content: {text:?}"
+        );
+        assert!(
+            !text.contains("data-x") && !text.contains("]]"),
+            "attribute junk leaked as text: {text:?}"
         );
     }
 
