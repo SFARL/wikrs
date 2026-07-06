@@ -95,7 +95,7 @@ _Last updated: 2026-07-06_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain, **default**) | ~133 MiB/s | Stage 2 engine — **≥ strip throughput** while also emitting diagnostics; structured where it can, strip-fallback for Unsupported blocks |
+  | `wikrs` AST path (parse→plain, **default**) | ~136 MiB/s | Stage 2 engine — **≥ strip throughput** while also emitting diagnostics; structured where it can, strip-fallback for Unsupported blocks |
   | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~255 MiB/s | community Rust parser → AST (no text out), 2018 |
 
