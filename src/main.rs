@@ -7,7 +7,8 @@ use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use rayon::prelude::*;
 
-use wikrs::{dump, extract, output, parser, render};
+use wikrs::diag::Severity;
+use wikrs::{diag, dump, extract, output, parser, render};
 
 /// Batch bounds for the streaming pipeline: read up to this many article pages
 /// (or this many bytes of raw wikitext, whichever fills first), render the
@@ -39,6 +40,26 @@ enum Engine {
     Ast,
 }
 
+/// Severity tier for `--fail-on`.
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+enum FailOn {
+    /// Any diagnostic at all. Strict: unexpanded templates are warnings, so
+    /// this fires on nearly every real Wikipedia page.
+    Warning,
+    /// Only constructs the parser refused to guess at (plus genuine errors) —
+    /// the useful gate for "was anything silently out of range".
+    Unsupported,
+}
+
+/// One rendered page plus what the parser reported about it. `diags` is `None`
+/// for the strip engine: Stage 1 cannot diagnose, which is different from
+/// "diagnosed and found nothing" (`Some` of an empty list).
+struct Rendered {
+    title: String,
+    text: String,
+    diags: Option<Vec<diag::Diagnostic>>,
+}
+
 /// Fast, honest wikitext extraction.
 #[derive(Debug, Parser)]
 #[command(name = "wikrs", version, about)]
@@ -62,9 +83,15 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = Engine::Ast)]
     engine: Engine,
 
-    /// Print a conversion-rate summary to stderr instead of writing pages.
+    /// Print a conversion-rate and diagnostics summary to stderr instead of
+    /// writing pages.
     #[arg(long)]
     stats: bool,
+
+    /// Exit non-zero if any page produced a diagnostic at or above this tier.
+    /// Needs `--engine ast` (strip cannot diagnose).
+    #[arg(long, value_enum)]
+    fail_on: Option<FailOn>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -80,6 +107,9 @@ fn main() -> anyhow::Result<()> {
     if ast_only && cli.stats {
         anyhow::bail!("--stats measures plain-text conversion; use --format text or jsonl");
     }
+    if cli.fail_on.is_some() && matches!(cli.engine, Engine::Strip) {
+        anyhow::bail!("--fail-on needs diagnostics; use --engine ast (the default)");
+    }
 
     // Stream the dump in bounded batches: read sequentially (one decompressor),
     // render each batch in parallel, write in dump order. A dump read/decode
@@ -93,6 +123,8 @@ fn main() -> anyhow::Result<()> {
     let stdout = io::stdout();
     let mut w = io::BufWriter::new(stdout.lock());
     let (mut total, mut clean, mut read) = (0usize, 0usize, 0usize);
+    let (mut zero_diag, mut warned, mut unsupported) = (0usize, 0usize, 0usize);
+    let mut failing = 0usize;
     loop {
         let mut batch: Vec<dump::Page> = Vec::with_capacity(BATCH_PAGES);
         let mut bytes = 0usize;
@@ -117,37 +149,80 @@ fn main() -> anyhow::Result<()> {
             break;
         }
 
-        let rendered: Vec<(String, String)> = batch
+        let rendered: Vec<Rendered> = batch
             .into_par_iter()
-            .map(|p| {
-                let text = match (cli.format, cli.engine) {
-                    // The whole output record is built here: sectioning and
-                    // markdown need the AST, which does not outlive this
-                    // closure.
-                    (Format::Sections, _) => {
-                        output::to_sections_jsonl(&p.title, &parser::parse(&p.text).nodes)
+            .map(|p| match cli.engine {
+                Engine::Strip => Rendered {
+                    text: extract::strip(&p.text),
+                    title: p.title,
+                    diags: None,
+                },
+                Engine::Ast => {
+                    // One parse per page: text, sections, markdown, and the
+                    // diagnostics all come off this single AST (which does not
+                    // outlive this closure).
+                    let parsed = parser::parse(&p.text);
+                    let text = match cli.format {
+                        Format::Sections => {
+                            output::to_sections_jsonl(&p.title, &parsed.nodes, &parsed.diagnostics)
+                        }
+                        Format::Markdown => {
+                            output::to_markdown(&p.title, &render::markdown(&parsed.nodes))
+                        }
+                        Format::Text | Format::Jsonl => render::plain(&parsed.nodes),
+                    };
+                    Rendered {
+                        title: p.title,
+                        text,
+                        diags: Some(parsed.diagnostics),
                     }
-                    (Format::Markdown, _) => {
-                        let parsed = parser::parse(&p.text);
-                        output::to_markdown(&p.title, &render::markdown(&parsed.nodes))
-                    }
-                    (_, Engine::Strip) => extract::strip(&p.text),
-                    (_, Engine::Ast) => render::plain(&parser::parse(&p.text).nodes),
-                };
-                (p.title, text)
+                }
             })
             .collect();
 
-        for (title, text) in &rendered {
+        for r in &rendered {
             total += 1;
+            if let Some(diags) = &r.diags {
+                if diags.is_empty() {
+                    zero_diag += 1;
+                }
+                if diags
+                    .iter()
+                    .any(|d| matches!(d.severity, Severity::Warning))
+                {
+                    warned += 1;
+                }
+                if diags
+                    .iter()
+                    .any(|d| matches!(d.severity, Severity::Unsupported | Severity::Error))
+                {
+                    unsupported += 1;
+                }
+                let hit = match cli.fail_on {
+                    Some(FailOn::Warning) => !diags.is_empty(),
+                    Some(FailOn::Unsupported) => diags
+                        .iter()
+                        .any(|d| !matches!(d.severity, Severity::Warning)),
+                    None => false,
+                };
+                if hit {
+                    failing += 1;
+                }
+            }
             if cli.stats {
-                if extract::looks_clean(text) {
+                if extract::looks_clean(&r.text) {
                     clean += 1;
                 }
             } else {
                 match cli.format {
-                    Format::Text | Format::Sections | Format::Markdown => writeln!(w, "{text}")?,
-                    Format::Jsonl => writeln!(w, "{}", output::to_jsonl(title, text))?,
+                    Format::Text | Format::Sections | Format::Markdown => {
+                        writeln!(w, "{}", r.text)?
+                    }
+                    Format::Jsonl => writeln!(
+                        w,
+                        "{}",
+                        output::to_jsonl(&r.title, &r.text, r.diags.as_deref())
+                    )?,
                 }
             }
         }
@@ -160,8 +235,28 @@ fn main() -> anyhow::Result<()> {
             100.0 * clean as f64 / total as f64
         };
         eprintln!("pages={total} clean={clean} ({pct:.1}% clean conversion)");
-        return Ok(());
+        // What the parser *knows*, next to what the residual heuristic *sees* —
+        // strip has no diagnostics, so the tier line would be meaningless there.
+        if matches!(cli.engine, Engine::Ast) {
+            eprintln!("zero-diag={zero_diag} warned={warned} unsupported={unsupported}");
+        }
+    } else {
+        w.flush()?;
+        // The page text on stdout must stay clean, but the run must not LOOK
+        // clean when it wasn't: one stderr line says what was flagged.
+        if warned + unsupported > 0 {
+            eprintln!(
+                "wikrs: {warned} page(s) with warnings, {unsupported} page(s) with \
+                 unsupported constructs ({zero_diag}/{total} zero-diagnostic)"
+            );
+        }
     }
-    w.flush()?;
+    if let (Some(tier), true) = (cli.fail_on, failing > 0) {
+        let name = match tier {
+            FailOn::Warning => "warning",
+            FailOn::Unsupported => "unsupported",
+        };
+        anyhow::bail!("{failing} page(s) with {name}+ diagnostics (--fail-on {name})");
+    }
     Ok(())
 }

@@ -817,3 +817,12 @@
 - **首次按 docs/RELEASING.md 手册执行,全绿:** 预检五关（三件套 95 绿、基准比值背书、markdown_roundtrip fuzz 15min 214 万次零 crash、全量 simplewiki smoke——均为当日 M 线既有记录）→ 双文件 bump → CHANGELOG 定版 → `cargo publish --dry-run` 干净（64 文件/487.6 KiB）→ push → **CI 绿后**才 tag `v0.3.0` → `cargo publish` **已上 crates.io**（API 验证 max_version=0.3.0）→ GitHub Release 建好（notes 含 1071/1071 与 fuzz 数字）。
 - **Tests/Benchmark:** 发布不涉代码;HEAD 即 M4 的验证状态（95 绿、ast ~118 MiB/s）。
 - **Regression?** none。
+
+---
+
+## [2026-07-05] Honesty 修复 1/7:CLI diagnostics 契约——parser 知道的,用户必须看得到
+
+- **Change:** CLI 内部改 `Rendered{title,text,diags}`——单次 parse,diagnostics 不再当场丢弃(strip 为 `None`,与 ast 的空数组语义区分:「不能诊断」≠「查过没问题」)。`--format jsonl`/`sections` 携带结构化 `diagnostics` 数组(code/severity/start/end/message,byte span;strip 引擎整个键缺席)。`--stats` 加第二行 `zero-diag= warned= unsupported=`(parser 知道的,与残留启发式并排)。text/markdown 的 stdout 保持纯正文,结尾 stderr 一行诊断摘要(干净 dump 不出声)。新 `--fail-on warning|unsupported` 分层退出门——布尔开关会因 W-TEMPLATE 页页命中而废,`unsupported` 才是有用的门;strip+`--fail-on` 启动即拒。
+- **Tests:** 先红后绿 ×5(jsonl 结构化诊断、sections 诊断、stats 分层、text stderr 摘要、fail-on 分层门)+ strip 无键护栏 + output 单测 2 新;全量 103 绿(+1 ignored),fmt/clippy 干净。
+- **Benchmark:** 不涉热路径(main.rs/output.rs 序列化面);本轮基线存档 `--save before`:ast ~120.9 / strip ~118.2 / 参照 parse_wiki_text ~252.9 MiB/s。
+- **Regression?** none。

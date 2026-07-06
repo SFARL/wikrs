@@ -3,22 +3,61 @@
 use serde::Serialize;
 
 use crate::ast::Node;
+use crate::diag::{Diagnostic, Severity};
 
 #[derive(Serialize)]
 struct Record<'a> {
     title: &'a str,
     text: &'a str,
+    /// `None` (key absent) when the engine cannot diagnose (strip) — an empty
+    /// array would falsely claim "checked, found nothing".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<Vec<DiagView<'a>>>,
 }
 
-/// One JSON object per line: `{"title":…,"text":…}`.
-pub fn to_jsonl(title: &str, text: &str) -> String {
-    serde_json::to_string(&Record { title, text }).expect("serialize record")
+/// Wire form of a [`Diagnostic`]: flat byte span, lowercase severity.
+#[derive(Serialize)]
+struct DiagView<'a> {
+    code: &'static str,
+    severity: &'static str,
+    start: usize,
+    end: usize,
+    message: &'a str,
+}
+
+fn diag_views(diags: &[Diagnostic]) -> Vec<DiagView<'_>> {
+    diags
+        .iter()
+        .map(|d| DiagView {
+            code: d.code,
+            severity: match d.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+                Severity::Unsupported => "unsupported",
+            },
+            start: d.span.start,
+            end: d.span.end,
+            message: &d.message,
+        })
+        .collect()
+}
+
+/// One JSON object per line: `{"title":…,"text":…,"diagnostics":[…]}`.
+/// `diagnostics: None` omits the key entirely (strip engine — can't diagnose).
+pub fn to_jsonl(title: &str, text: &str, diagnostics: Option<&[Diagnostic]>) -> String {
+    serde_json::to_string(&Record {
+        title,
+        text,
+        diagnostics: diagnostics.map(diag_views),
+    })
+    .expect("serialize record")
 }
 
 #[derive(Serialize)]
 struct SectionsRecord<'a> {
     title: &'a str,
     sections: Vec<Section>,
+    diagnostics: Vec<DiagView<'a>>,
 }
 
 #[derive(Serialize)]
@@ -55,7 +94,7 @@ pub fn to_markdown(title: &str, body: &str) -> String {
 /// heading. A heading directly followed by another keeps its section with
 /// empty text. Not a rendering: pure AST serialization — `heading`/`text` go
 /// through the same `render::plain` the differential already anchors.
-pub fn to_sections_jsonl(title: &str, nodes: &[Node]) -> String {
+pub fn to_sections_jsonl(title: &str, nodes: &[Node], diagnostics: &[Diagnostic]) -> String {
     let mut sections = Vec::new();
     let (mut level, mut heading) = (0u8, String::new());
     let mut start = 0;
@@ -89,7 +128,12 @@ pub fn to_sections_jsonl(title: &str, nodes: &[Node]) -> String {
             text: crate::render::plain(&nodes[start..]),
         });
     }
-    serde_json::to_string(&SectionsRecord { title, sections }).expect("serialize sections")
+    serde_json::to_string(&SectionsRecord {
+        title,
+        sections,
+        diagnostics: diag_views(diagnostics),
+    })
+    .expect("serialize sections")
 }
 
 #[cfg(test)]
@@ -124,8 +168,8 @@ mod tests {
             para("Fine print."),
         ];
         assert_eq!(
-            to_sections_jsonl("A \"B\"", &nodes),
-            r#"{"title":"A \"B\"","sections":[{"level":0,"heading":"","text":"Lead prose."},{"level":2,"heading":"History","text":"Old times."},{"level":3,"heading":"Details","text":"Fine print."}]}"#
+            to_sections_jsonl("A \"B\"", &nodes, &[]),
+            r#"{"title":"A \"B\"","sections":[{"level":0,"heading":"","text":"Lead prose."},{"level":2,"heading":"History","text":"Old times."},{"level":3,"heading":"Details","text":"Fine print."}],"diagnostics":[]}"#
         );
     }
 
@@ -133,8 +177,8 @@ mod tests {
     fn sections_no_lead_when_page_starts_with_heading() {
         let nodes = [heading(2, "Only"), para("Body.")];
         assert_eq!(
-            to_sections_jsonl("T", &nodes),
-            r#"{"title":"T","sections":[{"level":2,"heading":"Only","text":"Body."}]}"#
+            to_sections_jsonl("T", &nodes, &[]),
+            r#"{"title":"T","sections":[{"level":2,"heading":"Only","text":"Body."}],"diagnostics":[]}"#
         );
     }
 
@@ -144,8 +188,8 @@ mod tests {
         // with empty text, downstream chunkers decide.
         let nodes = [heading(2, "Empty"), heading(2, "Full"), para("x")];
         assert_eq!(
-            to_sections_jsonl("T", &nodes),
-            r#"{"title":"T","sections":[{"level":2,"heading":"Empty","text":""},{"level":2,"heading":"Full","text":"x"}]}"#
+            to_sections_jsonl("T", &nodes, &[]),
+            r#"{"title":"T","sections":[{"level":2,"heading":"Empty","text":""},{"level":2,"heading":"Full","text":"x"}],"diagnostics":[]}"#
         );
     }
 
@@ -160,8 +204,8 @@ mod tests {
             para("x"),
         ];
         assert_eq!(
-            to_sections_jsonl("T", &nodes),
-            r#"{"title":"T","sections":[{"level":2,"heading":"Bold & more","text":"x"}]}"#
+            to_sections_jsonl("T", &nodes, &[]),
+            r#"{"title":"T","sections":[{"level":2,"heading":"Bold & more","text":"x"}],"diagnostics":[]}"#
         );
     }
 
@@ -170,7 +214,7 @@ mod tests {
         // Through the real parser: levels are the `=` count, lead is level 0.
         let parsed =
             crate::parser::parse("Lead.\n\n== History ==\n\nOld.\n\n=== Deep ===\n\nFine.");
-        let line = to_sections_jsonl("Page", &parsed.nodes);
+        let line = to_sections_jsonl("Page", &parsed.nodes, &parsed.diagnostics);
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
         let secs = v["sections"].as_array().unwrap();
         assert_eq!(secs.len(), 3, "lead + 2 headings: {line}");
@@ -192,9 +236,27 @@ mod tests {
 
     #[test]
     fn jsonl_has_title_and_text() {
+        // No diagnostics available (strip): the key is absent, not an empty
+        // array — absence means "not checked", [] means "checked, clean".
         assert_eq!(
-            to_jsonl("Earth", "third planet"),
+            to_jsonl("Earth", "third planet", None),
             r#"{"title":"Earth","text":"third planet"}"#
+        );
+        assert_eq!(
+            to_jsonl("Earth", "third planet", Some(&[])),
+            r#"{"title":"Earth","text":"third planet","diagnostics":[]}"#
+        );
+    }
+
+    #[test]
+    fn jsonl_serializes_diagnostics_with_span_and_severity() {
+        let diags = [
+            crate::diag::Diagnostic::unsupported("U-TABLE", 3..17, "tables are not parsed yet"),
+            crate::diag::Diagnostic::warning("W-TEMPLATE", 20..31, "template dropped"),
+        ];
+        assert_eq!(
+            to_jsonl("T", "body", Some(&diags)),
+            r#"{"title":"T","text":"body","diagnostics":[{"code":"U-TABLE","severity":"unsupported","start":3,"end":17,"message":"tables are not parsed yet"},{"code":"W-TEMPLATE","severity":"warning","start":20,"end":31,"message":"template dropped"}]}"#
         );
     }
 }
