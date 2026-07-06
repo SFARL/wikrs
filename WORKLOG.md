@@ -853,3 +853,13 @@
 - **Tests:** 先红后绿 ×5(ns 不可解析、ns 缺失、成对 redirect、双 revision 拼接、空 `<text/>` 合法+双空元素仍报错)。全量 12 套件绿,fmt/clippy 干净。
 - **Benchmark:** 不涉 criterion 采样路径(compare 测 wikitext 解析,不测 XML 读取);每页新增开销为一次小字符串累积,可忽略。最新数:ast 124.4 MiB/s。
 - **Regression?** none。
+
+---
+
+## [2026-07-06] Honesty 修复 5/7:parser 三洞——colspan 大小写/attr 上下文、has_tag 复用 tokenizer span、unclosed `{{` drop 到块尾
+
+- **Change:** ¹**colspan/rowspan**:整块裸 `contains`(大小写敏感)→ 逐 cell 属性段 `find_ci`。危险方向修复:`COLSPAN=2` 漏检会把跨行格静默压扁成错位行(silent-wrong);收益方向:正文提及 "colspan"(在内容管道之后)不再误 bail,可解析的表格不再被丢。`cell_split` 重构自 cell_content,返回 `(attrs, content)`。²**has_tag**:复用 `tokenizer::tag_span` 整段跳过 comment/ref/nowiki(旧版 `<!--` 只跳 4 字节、直接扫注释体内,`<!-- <table> -->` 误报 U-HTML 丢掉整块);真结构 tag 照旧报。³**tokenizer::inline 的 unclosed `{{`**:degrade-to-literal → drop 到输入末尾,与 blocks()/strip_inline_templates/Stage 1 四路对齐,AST 输出不再漏字面 `{{…`(W-TEMPLATE 保留;线性性由"第一个未闭合即终止扫描"结构性保证,删掉 no_template 旗)。
+- **Coverage ratchet:** +4 用例翻零诊断(attr 值内 extension tag 族——has_tag 修复的直接收益),`BLESS_COVERAGE=1` 已随本提交入 baseline。
+- **Tests:** 先红后绿:大写 COLSPAN bail、正文 colspan 不 bail、has_tag 三 span 免报+真 tag 仍报、unclosed 模板不漏字面(parser+tokenizer 两层);cell_split 断言升级为 (attrs, content) 元组。全量 12 套件绿,fmt/clippy 干净。
+- **Benchmark(vs before 基线):** strip −0.5%(噪声);**ast 120.9 → 132.8 MiB/s(+10.2%)**——has_tag 不再逐字节扫已处理 span 内部、parse_table 免去两次全块 contains。
+- **Regression?** none(累计 +10%)。

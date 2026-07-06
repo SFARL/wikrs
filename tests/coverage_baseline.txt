@@ -32,6 +32,7 @@
 3. Indent Pre Nowiki: suppress leading whitespace in edited paragraphs
 3. Move format tags outside of WikiLink while preserving formats already outside WikiLink
 3. cats/langlinks and newlines: newline suppression for last list item should RT properly
+3. includeonly in part of an attr value
 3a. Anchors: do not suppress numbered extlinks
 3a. Table cells without escapable prefixes after edits
 3b. Anchors: do not suppress numbered extlinks
@@ -86,6 +87,7 @@ Category with different sort key
 Category with identical sort key
 Category with identical sort key, except underscores
 Character reference normalization in link text (T3938)
+Cloned formatting element with extension tag that unpacks itself in attribute value position
 Common list
 Confirm that 'apos' named character reference doesn't make it to output (not legal in HTML 4)
 Consecutive <pre>s should not get merged
@@ -129,6 +131,7 @@ Ensure that HTML adoption agency algorithm is properly implemented.
 Entities inside <nowiki>
 Escape DOM elements
 Expansion of multi-line templates in attribute values (T8255 check 2)
+Extension tag in attribute value
 Extra new lines before and after lists are preserved
 Extra newlines: More paragraphs with indented comment
 Failing to transform badly formed HTML into correct XHTML
@@ -477,6 +480,7 @@ T8200: paragraphs inside blockquotes (extra line break on close)
 T8200: paragraphs inside blockquotes (extra line break on open and close)
 T8200: paragraphs inside blockquotes (extra line break on open)
 T8200: paragraphs inside blockquotes (no extra line breaks)
+T93824: Put escaped HTML tags inside nowiki
 Table attribute legitimate extension
 Table attribute safety
 Table multiple attributes correction

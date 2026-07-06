@@ -95,8 +95,8 @@ _Last updated: 2026-07-06_
 
   | Implementation | Throughput | Notes |
   |---|---|---|
-  | `wikrs` AST path (parse→plain, **default**) | ~127 MiB/s | Stage 2 engine — **≈ strip throughput** while also emitting diagnostics; structured where it can, strip-fallback for Unsupported blocks |
-  | `wikrs::extract::strip` | ~119 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
+  | `wikrs` AST path (parse→plain, **default**) | ~133 MiB/s | Stage 2 engine — **≥ strip throughput** while also emitting diagnostics; structured where it can, strip-fallback for Unsupported blocks |
+  | `wikrs::extract::strip` | ~118 MiB/s | Stage 1 extractor → clean text (five allocating passes) |
   | `parse_wiki_text` (reference) | ~255 MiB/s | community Rust parser → AST (no text out), 2018 |
 
   > The Stage 2 **AST path** (parse → plain text) runs at **roughly the same throughput as the Stage 1 `strip`** while producing both text **and** diagnostics — the af0c5f0 DoS-robustness fix traded ~10% AST throughput for linear-on-adversarial-input safety, which is why it lands on par with strip rather than ahead of it. It **does not expand templates** — it drops them with a `W-TEMPLATE` warning and keeps the surrounding prose. Expanding templates (à la Bliki) would mean a Lua/Scribunto engine and ~2 orders of magnitude slower (Bliki runs at ~0.4 MB/s) — surrendering the one advantage wikrs has. So: honest drop + flag, keep the speed.

@@ -21,9 +21,6 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
     let mut out = Vec::new();
     let mut i = 0;
     let mut start = 0;
-    // Once an unterminated `{{` is seen, there's no `}}` ahead — stop probing
-    // every subsequent `{{` (keeps a `{{`×N flood linear, not O(n^2)).
-    let mut no_template = false;
     while i < b.len() {
         // Multi-char spans at `<`: comment / <ref> (dropped), <nowiki> (inner kept).
         if b[i] == b'<' {
@@ -50,10 +47,12 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
             }
         }
         // drop an inline template {{…}} (nesting-aware), keeping surrounding
-        // prose. The `no_template` check sits *inside* the `{{` branch (not the
-        // hot per-char condition): once one `{{` is unterminated there's no `}}`
-        // ahead, so stop probing — keeps `{{`×N linear without slowing normal text.
-        if b[i] == b'{' && b.get(i + 1) == Some(&b'{') && !no_template {
+        // prose. An unclosed `{{` consumes to the END of the input — the same
+        // rule as blocks() and strip_inline_templates, so no engine leaks a
+        // literal `{{…` tail into "clean" text (W-TEMPLATE still fires at the
+        // parse level). This also keeps a `{{`×N flood linear: the first
+        // unterminated `{{` ends the scan instead of re-probing each one.
+        if b[i] == b'{' && b.get(i + 1) == Some(&b'{') {
             match template_end(s, i) {
                 Some(end) => {
                     if start < i {
@@ -63,7 +62,12 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
                     start = i;
                     continue;
                 }
-                None => no_template = true, // no `}}` ahead — stop probing
+                None => {
+                    if start < i {
+                        out.push(Inline::Text(&s[start..i]));
+                    }
+                    return out;
+                }
             }
         }
         let marker = if b[i] == b'\'' {
@@ -106,7 +110,7 @@ pub fn inline(s: &str) -> Vec<Inline<'_>> {
 }
 
 /// How to handle a `<…>` span the inline tokenizer recognizes.
-enum TagSpan<'a> {
+pub(crate) enum TagSpan<'a> {
     /// Drop the span entirely (comment, `<ref>…</ref>`).
     Drop(usize),
     /// Keep this inner text, then skip to the offset (`<nowiki>…</nowiki>`).
@@ -115,6 +119,16 @@ enum TagSpan<'a> {
     SkipTag(usize),
     /// Skip this tag and emit a space (a void element like `<br>`).
     Space(usize),
+}
+
+impl TagSpan<'_> {
+    /// Offset just past this whole handled span — lets the parser's block-level
+    /// tag check skip a comment/ref/nowiki body instead of scanning inside it.
+    pub(crate) fn end(&self) -> usize {
+        match self {
+            TagSpan::Drop(e) | TagSpan::SkipTag(e) | TagSpan::Space(e) | TagSpan::Keep(_, e) => *e,
+        }
+    }
 }
 
 /// How the engine treats an HTML tag, by lowercased name.
@@ -156,7 +170,7 @@ pub(crate) fn tag_kind(name_lower: &str) -> TagKind {
 /// At a `<` (offset `i`): classify the tag and say how to handle it. Comment/ref
 /// dropped, nowiki inner kept, formatting tags skipped, `<br>`→space; structural
 /// or unknown tags return `None` so the block-level check reports them.
-fn tag_span(s: &str, i: usize) -> Option<TagSpan<'_>> {
+pub(crate) fn tag_span(s: &str, i: usize) -> Option<TagSpan<'_>> {
     let rest = &s[i..];
     if rest.starts_with("<!--") {
         let end = rest.find("-->").map_or(s.len(), |j| i + j + 3);
@@ -255,7 +269,7 @@ fn nowiki_span(rest: &str) -> Option<(&str, usize)> {
 }
 
 /// Case-insensitive substring search; `needle_lower` must be ASCII-lowercase.
-fn find_ci(haystack: &str, needle_lower: &str) -> Option<usize> {
+pub(crate) fn find_ci(haystack: &str, needle_lower: &str) -> Option<usize> {
     let (h, n) = (haystack.as_bytes(), needle_lower.as_bytes());
     if n.is_empty() {
         return Some(0);
@@ -335,6 +349,17 @@ mod tests {
         // inline templates are dropped (nesting-aware), prose around them kept
         assert_eq!(inline("a{{t|x}}b"), vec![Text("a"), Text("b")]);
         assert_eq!(inline("a{{o{{i}}}}b"), vec![Text("a"), Text("b")]);
+    }
+
+    #[test]
+    fn unclosed_template_consumes_to_end_of_input() {
+        // Same rule as blocks() and strip_inline_templates: an unclosed `{{`
+        // consumes to the end of its block. Degrading it to LITERAL text (the
+        // old behavior) leaked raw `{{…` markup into "clean" output.
+        assert_eq!(inline("a{{t|x"), vec![Text("a")]);
+        assert_eq!(inline("a{{x{{y"), vec![Text("a")]);
+        // prose before the `{{` on the same run stays
+        assert_eq!(inline("keep {{unclosed rest"), vec![Text("keep ")]);
     }
 
     #[test]

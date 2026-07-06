@@ -328,13 +328,6 @@ fn parse_table(block: &str) -> Option<Node<'_>> {
     if !block.trim_start().starts_with("{|") {
         return None;
     }
-    // Spanning cells make a grid we can't flatten faithfully — bail (honest
-    // U-TABLE) rather than emit a plausible-but-misaligned table that silently
-    // diverges from the rendered grid. (This is what keeps the random sample at
-    // 0% silent; see WORKLOG 2026-06-28.)
-    if block.contains("colspan") || block.contains("rowspan") {
-        return None;
-    }
     let mut rows: Vec<Vec<Vec<Node>>> = Vec::new();
     let mut current: Vec<Vec<Node>> = Vec::new();
     let mut started = false;
@@ -355,13 +348,21 @@ fn parse_table(block: &str) -> Option<Node<'_>> {
             // `!` row); split on both so a trailing `||` run doesn't leak as text.
             for part in rest.split("!!") {
                 for cell in part.split("||") {
-                    current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+                    let (attrs, content) = cell_split(cell);
+                    if attrs.is_some_and(spanning_attrs) {
+                        return None;
+                    }
+                    current.push(parse_inline(&tokenizer::inline(content)));
                 }
             }
             started = true;
         } else if let Some(rest) = l.strip_prefix('|') {
             for cell in rest.split("||") {
-                current.push(parse_inline(&tokenizer::inline(cell_content(cell))));
+                let (attrs, content) = cell_split(cell);
+                if attrs.is_some_and(spanning_attrs) {
+                    return None;
+                }
+                current.push(parse_inline(&tokenizer::inline(content)));
             }
             started = true;
         } else {
@@ -374,14 +375,27 @@ fn parse_table(block: &str) -> Option<Node<'_>> {
     Some(Node::Table { rows })
 }
 
-/// A table cell's content: the part after the attribute pipe — the first `|` not
-/// inside `[[…]]`, `{{…}}`, or a quoted attribute value — or the whole cell if
-/// there is none. This is MediaWiki's own rule for separating cell attributes
-/// from cell content. Quotes count only in value position (right after `=`), so
-/// an apostrophe in prose never masks the separator; depths saturate at 0, so a
-/// stray `]]`/`}}` (e.g. inside a quoted value, or plain junk) can't go negative
-/// and hide the real separator — which leaked attribute junk as cell text.
-fn cell_content(cell: &str) -> &str {
+/// ASCII case-insensitive `colspan`/`rowspan` in a cell's ATTRIBUTE segment.
+/// Spanning cells make a grid we can't flatten faithfully — the caller bails
+/// (honest U-TABLE) rather than emit a plausible-but-misaligned table that
+/// silently diverges from the rendered grid (this is what keeps the random
+/// sample at 0% silent; see WORKLOG 2026-06-28). Attribute context only:
+/// prose that merely *mentions* colspan (after the content pipe) is not a
+/// spanning grid, and `COLSPAN=` must not slip through the old case-sensitive
+/// whole-block `contains`.
+fn spanning_attrs(attrs: &str) -> bool {
+    tokenizer::find_ci(attrs, "colspan").is_some() || tokenizer::find_ci(attrs, "rowspan").is_some()
+}
+
+/// A table cell split at its attribute pipe — the first `|` not inside
+/// `[[…]]`, `{{…}}`, or a quoted attribute value: `(attributes, content)`, or
+/// `(None, whole cell)` if there is no such pipe. This is MediaWiki's own rule
+/// for separating cell attributes from cell content. Quotes count only in
+/// value position (right after `=`), so an apostrophe in prose never masks the
+/// separator; depths saturate at 0, so a stray `]]`/`}}` (e.g. inside a quoted
+/// value, or plain junk) can't go negative and hide the real separator — which
+/// leaked attribute junk as cell text.
+fn cell_split(cell: &str) -> (Option<&str>, &str) {
     let b = cell.as_bytes();
     let (mut link, mut tmpl) = (0u32, 0u32);
     let mut quote = 0u8; // 0 = outside, else the quote byte that opened a value
@@ -413,7 +427,7 @@ fn cell_content(cell: &str) -> &str {
             quote = b[i];
             i += 1;
         } else if b[i] == b'|' && link == 0 && tmpl == 0 {
-            return cell[i + 1..].trim();
+            return (Some(&cell[..i]), cell[i + 1..].trim());
         } else {
             if !b[i].is_ascii_whitespace() {
                 last = b[i];
@@ -421,7 +435,7 @@ fn cell_content(cell: &str) -> &str {
             i += 1;
         }
     }
-    cell.trim()
+    (None, cell.trim())
 }
 
 /// Assemble inline tokens into nodes, pairing bold/italic/link delimiters.
@@ -742,31 +756,37 @@ fn unsupported_reason(block: &str) -> Option<(&'static str, String)> {
 /// Whether the block contains an HTML tag the tokenizer can't handle inline.
 /// Comments, `<ref>`, `<nowiki>`, and transparent/void formatting tags are
 /// handled there; only structural/unknown tags (`<div>`, `<table>`, …) count.
+/// Reuses the tokenizer's own span logic, so a span the tokenizer handles is
+/// skipped WHOLE — a `<table>` inside a comment/ref/nowiki body never reaches
+/// the output and must not flag the block (the old scanner walked straight
+/// into those bodies and false-positived U-HTML, dropping parseable blocks).
 fn has_tag(s: &str) -> bool {
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'<' {
-            if s[i..].starts_with("<!--") {
-                i += 4;
-                continue;
-            }
-            let mut j = i + 1;
-            if b.get(j) == Some(&b'/') {
-                j += 1;
-            }
-            let name_start = j;
-            while j < b.len() && b[j].is_ascii_alphabetic() {
-                j += 1;
-            }
-            if j > name_start
-                && matches!(
-                    tokenizer::tag_kind(&s[name_start..j].to_ascii_lowercase()),
-                    tokenizer::TagKind::Unsupported
-                )
-            {
-                return true;
-            }
+        if b[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        if let Some(span) = tokenizer::tag_span(s, i) {
+            i = span.end();
+            continue;
+        }
+        let mut j = i + 1;
+        if b.get(j) == Some(&b'/') {
+            j += 1;
+        }
+        let name_start = j;
+        while j < b.len() && b[j].is_ascii_alphabetic() {
+            j += 1;
+        }
+        if j > name_start
+            && matches!(
+                tokenizer::tag_kind(&s[name_start..j].to_ascii_lowercase()),
+                tokenizer::TagKind::Unsupported
+            )
+        {
+            return true;
         }
         i += 1;
     }
@@ -1152,22 +1172,102 @@ mod tests {
     }
 
     #[test]
+    fn unclosed_template_drops_to_block_end_not_literal() {
+        // Stage 1 and strip_inline_templates both consume an unclosed `{{` to
+        // the end of the block; the tokenizer degraded it to literal text
+        // instead — so the AST path emitted raw `{{…` into supposedly clean
+        // output. It was W-TEMPLATE-flagged, but the text itself must not be
+        // polluted either. All three paths agree now.
+        let p = parse("keep {{unclosed\nmore");
+        let text = render::plain(&p.nodes);
+        assert!(!text.contains("{{"), "leaked unclosed template: {text:?}");
+        assert!(text.starts_with("keep"), "lost prose before it: {text:?}");
+        assert!(!text.contains("more"), "template body leaked: {text:?}");
+        assert!(
+            p.diagnostics.iter().any(|d| d.code == "W-TEMPLATE"),
+            "the drop must stay flagged: {:?}",
+            p.diagnostics
+        );
+    }
+
+    #[test]
+    fn has_tag_ignores_tags_inside_handled_spans() {
+        // A structural tag inside a comment/ref/nowiki body never reaches the
+        // output (dropped, or literal text for nowiki) — flagging U-HTML for
+        // it needlessly drops the whole block as Unsupported.
+        let p = parse("a <!-- <table> --> b");
+        assert!(
+            p.diagnostics.is_empty(),
+            "comment body: {:?}",
+            p.diagnostics
+        );
+        assert_eq!(render::plain(&p.nodes), "a  b");
+
+        let p = parse("see<ref>uses <table> markup</ref> now");
+        assert!(p.diagnostics.is_empty(), "ref body: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "see now");
+
+        let p = parse("x <nowiki><table></nowiki> y");
+        assert!(p.diagnostics.is_empty(), "nowiki body: {:?}", p.diagnostics);
+        assert_eq!(render::plain(&p.nodes), "x <table> y");
+
+        // …but a REAL structural tag still flags U-HTML.
+        let p = parse("a <table> b");
+        assert!(
+            p.diagnostics.iter().any(|d| d.code == "U-HTML"),
+            "real structural tag must still flag: {:?}",
+            p.diagnostics
+        );
+    }
+
+    #[test]
+    fn uppercase_colspan_grid_still_bails() {
+        // Attribute names are case-insensitive in MediaWiki: `COLSPAN=2` is
+        // the same spanning grid. Missing it flattens the grid with silently
+        // misaligned rows — the exact silent-wrong class wikrs must not have.
+        let p = parse("{|\n! COLSPAN=2 | Title\n|-\n| a || b\n|}");
+        assert!(
+            p.diagnostics.iter().any(|d| d.code == "U-TABLE"),
+            "uppercase COLSPAN grid should bail, got {:?}",
+            p.diagnostics
+        );
+    }
+
+    #[test]
+    fn colspan_in_cell_content_is_prose_not_a_bail() {
+        // "colspan" AFTER the content pipe (or in a cell with no attribute
+        // segment at all) is prose; bailing on it needlessly drops a
+        // perfectly parseable table.
+        let p = parse("{|\n| the colspan attribute spans columns\n|-\n| a || b\n|}");
+        assert!(
+            p.diagnostics.is_empty(),
+            "prose mention of colspan must not bail: {:?}",
+            p.diagnostics
+        );
+        let text = render::plain(&p.nodes);
+        assert!(text.contains("colspan attribute"), "{text:?}");
+    }
+
+    #[test]
     fn cell_attr_splitter_is_quote_aware_and_depth_safe() {
         // A quoted attribute value may contain `]]`, `}}`, or `|` — none of
         // them is the attribute/content separator. The old scanner let a stray
         // `]]`/`}}` push the bracket depth NEGATIVE, so the real separator `|`
         // was never recognized and the attribute junk leaked into the output
         // as cell text (zero diagnostics).
-        assert_eq!(cell_content(r#" data-x="]]" | kept"#), "kept");
-        assert_eq!(cell_content(r#" data-x="}}" | kept"#), "kept");
-        assert_eq!(cell_content(r#" data-x="a|b" | kept"#), "kept");
+        assert_eq!(cell_split(r#" data-x="]]" | kept"#).1, "kept");
+        assert_eq!(cell_split(r#" data-x="}}" | kept"#).1, "kept");
+        assert_eq!(cell_split(r#" data-x="a|b" | kept"#).1, "kept");
         // a stray closer OUTSIDE quotes must not mask the separator either
-        assert_eq!(cell_content("]] junk | kept"), "kept");
-        // unchanged behavior: no separator → the whole cell is content,
-        // and a `|` inside [[…]]/{{…}} still does not split
-        assert_eq!(cell_content("just content"), "just content");
-        assert_eq!(cell_content("[[a|b]] rest"), "[[a|b]] rest");
-        assert_eq!(cell_content(r#" style="x" | it's fine"#), "it's fine");
+        assert_eq!(cell_split("]] junk | kept").1, "kept");
+        // unchanged behavior: no separator → the whole cell is content (and no
+        // attribute segment), and a `|` inside [[…]]/{{…}} still does not split
+        assert_eq!(cell_split("just content"), (None, "just content"));
+        assert_eq!(cell_split("[[a|b]] rest"), (None, "[[a|b]] rest"));
+        assert_eq!(
+            cell_split(r#" style="x" | it's fine"#),
+            (Some(r#" style="x" "#), "it's fine")
+        );
     }
 
     #[test]
