@@ -882,3 +882,15 @@
 - **Tests:** parse_peak_rss 单测(macOS/Linux 两种格式 + 无匹配→None;注:xtask 不在 CI `cargo test` 默认成员内,本地 `-p xtask` 3 测绿)。端到端实测(8.3MB 合成 dump):wikrs 17.8 MB / WikiExtractor 21.0 MB peak RSS,两侧都打印。fmt/clippy(-p xtask)干净。
 - **Benchmark:** 不涉 wikrs 热路径(纯 xtask 面);最新数 ast 132.8 MiB/s。
 - **Regression?** none。
+
+---
+
+## [2026-07-06] v0.4.0 发布(honesty 系列上线:诊断随输出走 + 7 个静默损坏修复)
+
+- **发布内容:** 七项 honesty 修复(commit `dbabb30..42980d8`)——0.3.0 → **0.4.0**。breaking(pre-1.0 minor):dump reader 对畸形输入改硬错、jsonl/sections 加 `diagnostics` 字段。CHANGELOG 分 Added(诊断契约 / `--stats` 分层 / `--fail-on` / bench RSS)、Changed(dump reader + schema,标 breaking)、Fixed(七洞)。
+- **按 docs/RELEASING.md 机械执行,全绿:**
+  - 预检:三件套绿(parserTests 已取,跑满 1071 conformance 非 soft-skip);bench vs series-start 基线 **ast +12.9%(135.75 MiB/s)** 无回归;**fuzz 三靶 15min 各零发现**(strip 14.5M / parse 10.4M / markdown_roundtrip 2.6M runs;markdown 目录里的 crash 工件经查为 3.4 天前 Stage 3 开发遗留,replay 当前二进制不复现,且 gitignored);新诊断输出合成 dump 端到端冒烟(`--stats` 打出 `warned=5000 unsupported=0`、jsonl 带 diagnostics、strip 无键、`--fail-on unsupported` 对 warning-only 页正确 exit 0)。
+  - 切版:双 manifest bump + Cargo.lock 刷新 → CHANGELOG 定版 → commit `v0.4.0 136MB/s` → `cargo publish --dry-run` 干净(64 文件 / 525.2 KiB)→ push → **CI 绿(completed/success)后**才 tag `v0.4.0` + push tag → GitHub Release 建好(notes 含 CHANGELOG + 验证数字)。
+- **交接:** `cargo publish` 按既定边界交用户执行(crates.io token 是账户所有者的)。发布后验证 `max_version==0.4.0`。
+- **Tests/Benchmark:** 发布不涉代码;HEAD = bfd98bf 的验证状态(81 lib + 集成全绿、ast ~136 MiB/s)。
+- **Regression?** none。
