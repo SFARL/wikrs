@@ -419,15 +419,21 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
             .diagnostics
             .iter()
             .any(|d| d.severity == Severity::Unsupported);
+        // A rendered table is the one legitimate source of word reordering —
+        // it licenses the order-robust word-precision fallback for this page.
+        let has_table = parsed
+            .nodes
+            .iter()
+            .any(|n| matches!(n, wikrs::ast::Node::Table { .. }));
 
-        let bucket = diff::classify(&text, &truth, has_unsupported);
+        let bucket = diff::classify(&text, &truth, has_unsupported, has_table);
         report.record(bucket);
 
         let prec = diff::precision(&text, &truth);
         precision_sum += prec;
         word_precision_sum += diff::word_precision(&text, &truth);
         coverage_sum += diff::coverage(&text, &truth);
-        if diff::is_faithful(&text, &truth) {
+        if diff::is_faithful(&text, &truth, has_table) {
             faithful_text += 1;
         }
         if text.split_whitespace().next().is_none() {
@@ -466,7 +472,10 @@ fn diff_report(cache_dir: &Path, show: usize) -> anyhow::Result<()> {
         "  mean coverage:  {:5.1}%   (of article prose, how much wikrs emits — rest = templates, by design)",
         100.0 * coverage_sum / n
     );
-    println!("  faithful prose: {faithful_text}/{total} pages (shingle >= 90% OR word >= 97%)");
+    println!(
+        "  faithful prose: {faithful_text}/{total} pages \
+         (shingle >= 90%; word >= 97% only for pages with a rendered table)"
+    );
     println!("  empty output:   {empty_output}/{total} pages");
     per_page.sort_by(|a, b| a.0.total_cmp(&b.0));
     println!(

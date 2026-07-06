@@ -38,7 +38,10 @@ const FAITHFUL_THRESHOLD: f64 = 0.90;
 /// Word-precision fallback threshold: if nearly all of wikrs's *distinct words*
 /// are corroborated, the page is faithful even when phrase-shingles differ —
 /// exactly the table-cell case (same words, flattened in a different order than
-/// Parsoid's grid). Separates reordering from genuine fabrication.
+/// Parsoid's grid). Applied ONLY to pages that actually rendered a table: table
+/// flattening is the one legitimate reordering, and granting the order-robust
+/// fallback globally would classify same-words-scrambled semantic corruption
+/// as faithful.
 const WORD_FAITHFUL_THRESHOLD: f64 = 0.97;
 
 /// Shingle width in words. Phrase-level: catches "wikrs emitted a phrase not in
@@ -47,28 +50,37 @@ const WORD_FAITHFUL_THRESHOLD: f64 = 0.97;
 const SHINGLE_K: usize = 3;
 
 /// Classify one page. `has_unsupported` is whether wikrs emitted ≥1 `Unsupported`
-/// diagnostic for it (the caller derives this from `parse().diagnostics`).
+/// diagnostic for it; `has_table` is whether the parse produced a table node
+/// (the caller derives both from `parse()`) — the table is what licenses the
+/// word-precision fallback in [`is_faithful`].
 ///
 /// Precedence matters: a page wikrs *flagged* is `Reported` even if the text also
 /// diverges — being honest about it is the whole point. Only a page wikrs thought
 /// it handled cleanly (no diagnostic) yet got wrong is `Divergent`.
-pub fn classify(wikrs_text: &str, truth_text: &str, has_unsupported: bool) -> Bucket {
+pub fn classify(
+    wikrs_text: &str,
+    truth_text: &str,
+    has_unsupported: bool,
+    has_table: bool,
+) -> Bucket {
     if has_unsupported {
         Bucket::Reported
-    } else if is_faithful(wikrs_text, truth_text) {
+    } else if is_faithful(wikrs_text, truth_text, has_table) {
         Bucket::Faithful
     } else {
         Bucket::Divergent
     }
 }
 
-/// Is everything wikrs emitted corroborated by the ground truth? Faithful when the
-/// phrase-shingles match (strict — catches fabrication) OR nearly all distinct
-/// words are present (order-robust — so table-cell reordering isn't a false
-/// divergence).
-pub fn is_faithful(wikrs_text: &str, truth_text: &str) -> bool {
+/// Is everything wikrs emitted corroborated by the ground truth? Faithful when
+/// the phrase-shingles match (strict — catches fabrication) OR — only for a
+/// page that actually rendered a table (`table_evidence`) — nearly all distinct
+/// words are present. Table flattening is the one legitimate reordering;
+/// granting the order-robust fallback to every page would classify
+/// same-words-scrambled semantic corruption as faithful.
+pub fn is_faithful(wikrs_text: &str, truth_text: &str, table_evidence: bool) -> bool {
     precision(wikrs_text, truth_text) >= FAITHFUL_THRESHOLD
-        || word_precision(wikrs_text, truth_text) >= WORD_FAITHFUL_THRESHOLD
+        || (table_evidence && word_precision(wikrs_text, truth_text) >= WORD_FAITHFUL_THRESHOLD)
 }
 
 /// Fraction of wikrs's phrase-shingles that also occur in the ground truth — how
@@ -183,14 +195,14 @@ mod tests {
         // wikrs emits a clean subset of the article's prose (templates dropped).
         let wikrs = "Earth is the third planet from the Sun";
         let truth = "Earth is the third planet from the Sun . It has one moon and abundant water .";
-        assert_eq!(classify(wikrs, truth, false), Bucket::Faithful);
+        assert_eq!(classify(wikrs, truth, false, false), Bucket::Faithful);
     }
 
     #[test]
     fn any_unsupported_diagnostic_is_reported_even_if_text_matches() {
         // Honesty precedence: if wikrs flagged it, it lands in Reported regardless.
         let text = "Earth is the third planet from the Sun";
-        assert_eq!(classify(text, text, true), Bucket::Reported);
+        assert_eq!(classify(text, text, true, false), Bucket::Reported);
     }
 
     #[test]
@@ -199,7 +211,7 @@ mod tests {
         // the silent-error bucket.
         let wikrs = "Earth is the flat center of the universe";
         let truth = "Earth is the third planet from the Sun in the Solar System";
-        assert_eq!(classify(wikrs, truth, false), Bucket::Divergent);
+        assert_eq!(classify(wikrs, truth, false, false), Bucket::Divergent);
     }
 
     #[test]
@@ -209,7 +221,7 @@ mod tests {
         assert!((precision(wikrs, truth) - 1.0).abs() < 1e-9);
         // Empty wikrs output emitted nothing false -> vacuously faithful.
         assert!((precision("", truth) - 1.0).abs() < 1e-9);
-        assert!(is_faithful("", truth));
+        assert!(is_faithful("", truth, false));
     }
 
     #[test]
@@ -223,7 +235,7 @@ mod tests {
         assert!(coverage(wikrs, truth) < 0.5);
         assert!(coverage(wikrs, truth) > 0.0);
         assert!((precision(wikrs, truth) - 1.0).abs() < 1e-9);
-        assert_eq!(classify(wikrs, truth, false), Bucket::Faithful);
+        assert_eq!(classify(wikrs, truth, false, false), Bucket::Faithful);
     }
 
     #[test]
@@ -252,19 +264,37 @@ mod tests {
     fn word_precision_rescues_reordered_table_cells() {
         // Table-cell flattening reorders words; the content is still corroborated,
         // so word-precision stays high though the phrase-shingles don't match.
+        // The rescue applies only WITH table evidence.
         let wikrs = "Alice 30 Bob 25";
         let truth = "Name Age Alice Bob 30 25 and more rows of data here";
         assert!(precision(wikrs, truth) < 0.90, "shingles should differ");
         assert!(word_precision(wikrs, truth) > 0.97, "every word is present");
-        assert!(is_faithful(wikrs, truth), "faithful via the word fallback");
+        assert!(is_faithful(wikrs, truth, true), "faithful via the fallback");
+    }
+
+    #[test]
+    fn word_fallback_needs_table_evidence() {
+        // Same distinct words in a scrambled order is a semantic corruption
+        // when the page has NO table to blame the reordering on — the old
+        // global fallback quietly classified such pages Faithful.
+        let wikrs = "planet third the is Earth Sun the from";
+        let truth = "Earth is the third planet from the Sun";
+        assert!(word_precision(wikrs, truth) > 0.97, "same word set");
+        assert!(
+            !is_faithful(wikrs, truth, false),
+            "no table -> no order-robust fallback"
+        );
+        assert_eq!(classify(wikrs, truth, false, false), Bucket::Divergent);
+        assert_eq!(classify(wikrs, truth, false, true), Bucket::Faithful);
     }
 
     #[test]
     fn genuinely_different_words_stay_divergent() {
-        // Different *words*, not just order — a real silent error, not reordering.
+        // Different *words*, not just order — a real silent error, not
+        // reordering; even table evidence does not excuse it.
         let wikrs = "Berlin is the capital of Germany";
         let truth = "Paris is the capital of France and a city";
         assert!(word_precision(wikrs, truth) < 0.97);
-        assert!(!is_faithful(wikrs, truth));
+        assert!(!is_faithful(wikrs, truth, true));
     }
 }

@@ -863,3 +863,13 @@
 - **Tests:** 先红后绿:大写 COLSPAN bail、正文 colspan 不 bail、has_tag 三 span 免报+真 tag 仍报、unclosed 模板不漏字面(parser+tokenizer 两层);cell_split 断言升级为 (attrs, content) 元组。全量 12 套件绿,fmt/clippy 干净。
 - **Benchmark(vs before 基线):** strip −0.5%(噪声);**ast 120.9 → 132.8 MiB/s(+10.2%)**——has_tag 不再逐字节扫已处理 span 内部、parse_table 免去两次全块 contains。
 - **Regression?** none(累计 +10%)。
+
+---
+
+## [2026-07-06] Honesty 修复 6/7:differential word-fallback 加表格证据门
+
+- **Change:** `diff::is_faithful`/`classify` 加 `table_evidence`/`has_table` 参数:word-precision fallback(≥97% 判 faithful)只对 parse 出过 `Node::Table` 的页面开放。旧版全局 OR 会把"同词乱序"的语义损坏(无表格可归因)也判成 faithful。调用方(xtask diff-report、tests/diff_report.rs)从 parse 结果推 has_table;报表措辞同步。
+- **Tests:** 新契约测试 word_fallback_needs_table_evidence(无表格乱序 → Divergent;有表格 → Faithful);rescue 用例改为显式 `true` 门;different-words 用例升级为"即使有表格证据也不豁免"。全量 12 套件绿,fmt/clippy 干净。
+- **真实页面验证(18 页缓存,stash 前后对照):** 收紧后指标零变化——buckets 0/0/100 不变、faithful prose 18/18 不变、mean precision 93.3% 不变。真实页面要么本来就过 shingle 线,要么确有表格;理论洞(全局乱序豁免)关闭,真实数字零成本。
+- **Benchmark:** 不涉热路径(diff/xtask 面);最新数 ast 132.8 MiB/s。
+- **Regression?** none。
