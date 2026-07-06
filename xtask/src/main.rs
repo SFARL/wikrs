@@ -190,14 +190,14 @@ fn bench_compare(dump: &Path, python: &Path) -> anyhow::Result<()> {
         bail!("cargo build --release failed");
     }
 
-    let wikrs_time = time_cmd(
+    let (wikrs_time, wikrs_rss) = time_cmd(
         Command::new("target/release/wikrs")
             .arg("--input")
             .arg(dump)
             .args(["--format", "text"]),
     )
     .context("running wikrs")?;
-    report("wikrs", wikrs_time, mb);
+    report("wikrs", wikrs_time, mb, wikrs_rss);
 
     let we = time_cmd(
         Command::new(python)
@@ -206,8 +206,8 @@ fn bench_compare(dump: &Path, python: &Path) -> anyhow::Result<()> {
             .args(["-o", "-", "-q"]),
     );
     match we {
-        Ok(we_time) => {
-            report("wikiextractor", we_time, mb);
+        Ok((we_time, we_rss)) => {
+            report("wikiextractor", we_time, mb, we_rss);
             println!(
                 "speedup: {:.1}x faster",
                 we_time.as_secs_f64() / wikrs_time.as_secs_f64()
@@ -218,19 +218,79 @@ fn bench_compare(dump: &Path, python: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn time_cmd(cmd: &mut Command) -> anyhow::Result<Duration> {
+/// Run `cmd` to completion: (wall time, peak RSS in bytes). The command is
+/// wrapped in `/usr/bin/time` (`-l` on macOS reports bytes, `-v` on Linux
+/// reports kbytes) and the RSS parsed from its stderr — `None` when the
+/// wrapper is unavailable or unparseable, never a fake number. Deliberately
+/// NOT `getrusage(RUSAGE_CHILDREN)`: that is the max over ALL reaped children,
+/// so the second measured command would inherit the first one's peak.
+fn time_cmd(cmd: &mut Command) -> anyhow::Result<(Duration, Option<u64>)> {
+    let mut wrapped = Command::new("/usr/bin/time");
+    wrapped
+        .arg(if cfg!(target_os = "macos") {
+            "-l"
+        } else {
+            "-v"
+        })
+        .arg(cmd.get_program())
+        .args(cmd.get_args())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
     let start = Instant::now();
-    let status = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+    let (status, rss) = match wrapped.output() {
+        Ok(out) => (
+            out.status,
+            parse_peak_rss(&String::from_utf8_lossy(&out.stderr)),
+        ),
+        // no /usr/bin/time on this system — measure wall time only
+        Err(_) => (
+            cmd.stdout(Stdio::null()).stderr(Stdio::null()).status()?,
+            None,
+        ),
+    };
     let elapsed = start.elapsed();
     if !status.success() {
         bail!("command exited with {status}");
     }
-    Ok(elapsed)
+    Ok((elapsed, rss))
 }
 
-fn report(name: &str, d: Duration, mb: f64) {
+/// Peak RSS in BYTES from `/usr/bin/time` output. macOS `-l` puts the byte
+/// count first (`531628032  maximum resident set size`); GNU time `-v` labels
+/// a kbyte count (`Maximum resident set size (kbytes): 519168`).
+fn parse_peak_rss(stderr: &str) -> Option<u64> {
+    for line in stderr.lines() {
+        let l = line.trim();
+        let lower = l.to_ascii_lowercase();
+        if !lower.contains("maximum resident set size") {
+            continue;
+        }
+        if lower.contains("kbytes") {
+            if let Some(kb) = l
+                .rsplit(':')
+                .next()
+                .and_then(|v| v.trim().parse::<u64>().ok())
+            {
+                return Some(kb * 1024);
+            }
+        }
+        if let Some(bytes) = l
+            .split_whitespace()
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+fn report(name: &str, d: Duration, mb: f64, peak_rss: Option<u64>) {
+    let rss = peak_rss.map_or(String::new(), |b| {
+        format!("   peak RSS {:>6.1} MB", b as f64 / 1e6)
+    });
     println!(
-        "{name:<14} {:>7.2} s   {:>7.1} MB/s",
+        "{name:<14} {:>7.2} s   {:>7.1} MB/s{rss}",
         d.as_secs_f64(),
         mb / d.as_secs_f64()
     );
@@ -566,5 +626,20 @@ mod tests {
     #[test]
     fn parse_random_titles_errors_on_bad_shape() {
         assert!(parse_random_titles(r#"{"oops":true}"#).is_err());
+    }
+
+    #[test]
+    fn parses_peak_rss_from_time_output() {
+        // macOS `/usr/bin/time -l`: bytes, value leads the line.
+        let mac = "        7.02 real         6.50 user         0.31 sys\n\
+                   531628032  maximum resident set size\n\
+                   0  average shared memory size";
+        assert_eq!(parse_peak_rss(mac), Some(531_628_032));
+        // Linux `/usr/bin/time -v`: kbytes, labelled `key: value` line.
+        let linux = "\tUser time (seconds): 5.12\n\
+                     \tMaximum resident set size (kbytes): 519168\n";
+        assert_eq!(parse_peak_rss(linux), Some(519_168 * 1024));
+        // Anything else -> None: the report omits RSS, never fakes a number.
+        assert_eq!(parse_peak_rss("no rss line here"), None);
     }
 }

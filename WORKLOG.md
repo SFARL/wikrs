@@ -873,3 +873,12 @@
 - **真实页面验证(18 页缓存,stash 前后对照):** 收紧后指标零变化——buckets 0/0/100 不变、faithful prose 18/18 不变、mean precision 93.3% 不变。真实页面要么本来就过 shingle 线,要么确有表格;理论洞(全局乱序豁免)关闭,真实数字零成本。
 - **Benchmark:** 不涉热路径(diff/xtask 面);最新数 ast 132.8 MiB/s。
 - **Regression?** none。
+
+---
+
+## [2026-07-06] Honesty 修复 7/7:bench-compare 输出 peak RSS——README 内存数字可按文档复现
+
+- **Change:** `xtask::time_cmd` 用 `/usr/bin/time` 包裹被测命令(macOS `-l` 报 bytes、GNU `-v` 报 kbytes,`parse_peak_rss` 统一成 bytes),报表加 `peak RSS xx.x MB` 列;wrapper 缺失或输出不可解析 → 省略该列,绝不编数。刻意不用 `getrusage(RUSAGE_CHILDREN)`——它取所有已回收子进程的 max,第二个被测进程会被第一个的峰值污染。README 的 Reproduce 说明同步:内存数字与速度数字出自同一条命令。
+- **Tests:** parse_peak_rss 单测(macOS/Linux 两种格式 + 无匹配→None;注:xtask 不在 CI `cargo test` 默认成员内,本地 `-p xtask` 3 测绿)。端到端实测(8.3MB 合成 dump):wikrs 17.8 MB / WikiExtractor 21.0 MB peak RSS,两侧都打印。fmt/clippy(-p xtask)干净。
+- **Benchmark:** 不涉 wikrs 热路径(纯 xtask 面);最新数 ast 132.8 MiB/s。
+- **Regression?** none。
