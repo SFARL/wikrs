@@ -64,7 +64,9 @@ struct Rendered {
 #[derive(Debug, Parser)]
 #[command(name = "wikrs", version, about)]
 struct Cli {
-    /// Path to a Wikimedia XML dump (`.xml` or `.xml.bz2`).
+    /// Path to a Wikimedia XML dump (`.xml` or `.xml.bz2`). Must be a
+    /// single-revision `pages-articles` dump; a multi-revision
+    /// `pages-meta-history` dump is rejected, not silently concatenated.
     #[arg(long)]
     input: PathBuf,
 

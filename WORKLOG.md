@@ -844,3 +844,12 @@
 - **Tests:** 先红后绿:cell_content 单测 7 例(三个 review 指定 repro + 裸 `]]` 前缀 + 三个不变式护栏)+ 端到端 parse 表格泄漏 repro。全量绿(lib 70),ratchet 未动,fmt/clippy 干净。
 - **Benchmark(vs before 基线):** ast +3.4%(124.4 MiB/s);strip −1.4%、参照 −4.0% 同步下漂 → 机器状态噪声。README 表保持上轮 ~127,最后一轮统一复测定版。
 - **Regression?** none。
+
+---
+
+## [2026-07-06] Honesty 修复 4/7:dump reader 边界——ns 硬错、redirect 双形态、多 revision 拒收
+
+- **Change:** ¹`<ns>` 缺失(pre-0.6 schema)或 parse 失败 → **hard error**,不再 `unwrap_or(0)` 把未知页伪造进 article 命名空间(ns 文本改为在 `</ns>` 时统一 parse,防 Text 事件拆分截断数字);²`<redirect>` 同时识别 `Event::Start`(成对形态)和 `Event::Empty`(自闭合),漏掉前者会把 redirect 存根当正文吐出;³第二个 `<text>` **元素** → hard error(pages-meta-history 拒收,不静默拼接 revision)——计数的是元素不是 Text 事件:一个元素的内容合法地拆成多个 Text/GeneralRef 事件(实体页),`<text/>` Empty 也算一个元素。文档:模块头 + `Page.namespace` + CLI `--input` help 都写明只支持单 revision pages-articles。
+- **Tests:** 先红后绿 ×5(ns 不可解析、ns 缺失、成对 redirect、双 revision 拼接、空 `<text/>` 合法+双空元素仍报错)。全量 12 套件绿,fmt/clippy 干净。
+- **Benchmark:** 不涉 criterion 采样路径(compare 测 wikitext 解析,不测 XML 读取);每页新增开销为一次小字符串累积,可忽略。最新数:ast 124.4 MiB/s。
+- **Regression?** none。

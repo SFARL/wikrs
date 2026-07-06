@@ -2,6 +2,12 @@
 //!
 //! Yields one page at a time at constant memory, filtering to article
 //! namespaces and skipping redirects.
+//!
+//! Only **single-revision `pages-articles` dumps** are supported: a page with
+//! more than one `<text>` element (a `pages-meta-history` dump) is a hard
+//! error, never a silent concatenation of revisions. Likewise a page whose
+//! `<ns>` is missing or unparseable is a hard error — defaulting it to the
+//! article namespace would fabricate articles.
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -21,7 +27,9 @@ use quick_xml::Reader;
 pub struct Page {
     /// The page title.
     pub title: String,
-    /// MediaWiki namespace number (`0` = main/article namespace).
+    /// MediaWiki namespace number (`0` = main/article namespace), from the
+    /// page's mandatory `<ns>` element — a missing or unparseable `<ns>` is a
+    /// hard error at read time, never a silent default.
     pub namespace: i32,
     /// Whether the page is a `#REDIRECT` stub.
     pub redirect: bool,
@@ -278,6 +286,13 @@ impl<R: BufRead> Iterator for Pages<R> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut page: Option<Page> = None;
         let mut field = Field::None;
+        // Accumulated `<ns>` text (parsed at `</ns>`, so a split Text event
+        // can't truncate the number) and whether this page has one at all.
+        let mut ns_buf = String::new();
+        let mut ns_seen = false;
+        // `<text>` ELEMENTS seen for this page — not Text events: one element's
+        // content legally arrives as many Text/GeneralRef events (entities).
+        let mut text_elems = 0u32;
         loop {
             self.buf.clear();
             match self.reader.read_event_into(&mut self.buf) {
@@ -288,18 +303,58 @@ impl<R: BufRead> Iterator for Pages<R> {
                             namespace: 0,
                             redirect: false,
                             text: String::new(),
-                        })
+                        });
+                        ns_buf.clear();
+                        ns_seen = false;
+                        text_elems = 0;
                     }
                     b"title" => field = Field::Title,
                     b"ns" => field = Field::Ns,
-                    b"text" => field = Field::Text,
+                    b"text" => {
+                        field = Field::Text;
+                        if let Some(p) = page.as_ref() {
+                            text_elems += 1;
+                            if text_elems > 1 {
+                                return Some(Err(anyhow::anyhow!(
+                                    "page {:?} has multiple <text> elements — multi-revision \
+                                     dumps (pages-meta-history) are not supported; refusing to \
+                                     silently concatenate revisions, feed a pages-articles dump",
+                                    p.title
+                                )));
+                            }
+                        }
+                    }
+                    // paired form <redirect …></redirect> (Event::Empty below
+                    // covers the self-closing form real dumps use)
+                    b"redirect" => {
+                        if let Some(p) = page.as_mut() {
+                            p.redirect = true;
+                        }
+                    }
                     _ => {}
                 },
-                Ok(Event::Empty(e)) if e.name().as_ref() == b"redirect" => {
-                    if let Some(p) = page.as_mut() {
-                        p.redirect = true;
+                Ok(Event::Empty(e)) => match e.name().as_ref() {
+                    b"redirect" => {
+                        if let Some(p) = page.as_mut() {
+                            p.redirect = true;
+                        }
                     }
-                }
+                    // an empty <text/> (blank page) is still one element
+                    b"text" => {
+                        if let Some(p) = page.as_ref() {
+                            text_elems += 1;
+                            if text_elems > 1 {
+                                return Some(Err(anyhow::anyhow!(
+                                    "page {:?} has multiple <text> elements — multi-revision \
+                                     dumps (pages-meta-history) are not supported; refusing to \
+                                     silently concatenate revisions, feed a pages-articles dump",
+                                    p.title
+                                )));
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 Ok(Event::Text(t)) => {
                     if let Some(p) = page.as_mut() {
                         // 0.40: decode bytes -> str, then resolve XML entities.
@@ -314,7 +369,7 @@ impl<R: BufRead> Iterator for Pages<R> {
                         match field {
                             Field::Title => p.title.push_str(&s),
                             Field::Text => p.text.push_str(&s),
-                            Field::Ns => p.namespace = s.trim().parse().unwrap_or(0),
+                            Field::Ns => ns_buf.push_str(&s),
                             Field::None => {}
                         }
                     }
@@ -351,8 +406,38 @@ impl<R: BufRead> Iterator for Pages<R> {
                     }
                 }
                 Ok(Event::End(e)) => match e.name().as_ref() {
-                    b"title" | b"ns" | b"text" => field = Field::None,
-                    b"page" => return page.map(Ok),
+                    b"ns" => {
+                        field = Field::None;
+                        if let Some(p) = page.as_mut() {
+                            match ns_buf.trim().parse() {
+                                Ok(n) => {
+                                    p.namespace = n;
+                                    ns_seen = true;
+                                }
+                                Err(_) => {
+                                    return Some(Err(anyhow::anyhow!(
+                                        "unparseable <ns> {:?} in page {:?} — refusing to \
+                                         default it into the article namespace",
+                                        ns_buf.trim(),
+                                        p.title
+                                    )))
+                                }
+                            }
+                        }
+                    }
+                    b"title" | b"text" => field = Field::None,
+                    b"page" => {
+                        if let Some(p) = &page {
+                            if !ns_seen {
+                                return Some(Err(anyhow::anyhow!(
+                                    "page {:?} has no <ns> element (pre-0.6 export schema?) — \
+                                     refusing to guess its namespace",
+                                    p.title
+                                )));
+                            }
+                        }
+                        return page.map(Ok);
+                    }
                     _ => {}
                 },
                 Ok(Event::Eof) => return None,
@@ -501,6 +586,75 @@ mod tests {
             <revision><text>a &bogus; b</text></revision></page></mediawiki>";
         let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml)).collect();
         assert!(res.is_err(), "unknown entity must surface as an error");
+    }
+
+    #[test]
+    fn unparseable_ns_is_an_error_not_namespace_zero() {
+        // `<ns>` that doesn't parse must not silently default to 0 — that
+        // promotes an unknown page into the article namespace.
+        let xml = "<mediawiki><page><title>X</title><ns>abc</ns>\
+            <revision><text>body</text></revision></page></mediawiki>";
+        let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml)).collect();
+        assert!(res.is_err(), "bad <ns> must be a hard error");
+    }
+
+    #[test]
+    fn missing_ns_is_an_error_not_namespace_zero() {
+        // A page with no <ns> at all (pre-0.6 export schema) must error too:
+        // treating it as ns0 fabricates articles, and silently skipping it
+        // would truncate output — both are the silent failures wikrs exists
+        // to avoid.
+        let xml = "<mediawiki><page><title>X</title>\
+            <revision><text>body</text></revision></page></mediawiki>";
+        let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml)).collect();
+        assert!(res.is_err(), "missing <ns> must be a hard error");
+    }
+
+    #[test]
+    fn paired_redirect_element_is_detected() {
+        // XML-equivalent paired form <redirect …></redirect>: quick-xml emits
+        // Start+End, not Empty. Missing it would emit the redirect stub as a
+        // full article.
+        let xml = "<mediawiki><page><title>R</title><ns>0</ns>\
+            <redirect title=\"T\"></redirect>\
+            <revision><text>#REDIRECT [[T]]</text></revision></page></mediawiki>";
+        let pages: Vec<Page> = Pages::new(Cursor::new(xml))
+            .collect::<anyhow::Result<_>>()
+            .unwrap();
+        assert!(pages[0].redirect, "paired-form <redirect> must be detected");
+    }
+
+    #[test]
+    fn multiple_text_elements_are_an_error_not_concatenated() {
+        // pages-articles dumps carry exactly one revision per page; a
+        // meta-history dump carries many. Appending them yields garbled text
+        // with exit 0 — refuse loudly instead.
+        let xml = "<mediawiki><page><title>H</title><ns>0</ns>\
+            <revision><text>old text</text></revision>\
+            <revision><text>new text</text></revision></page></mediawiki>";
+        let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml)).collect();
+        assert!(res.is_err(), "multi-revision page must be a hard error");
+    }
+
+    #[test]
+    fn single_empty_text_element_stays_valid() {
+        // Guard for the multi-<text> check: one EMPTY <text/> (a blank page)
+        // is a single element, not an error.
+        let xml = "<mediawiki><page><title>E</title><ns>0</ns>\
+            <revision><text bytes=\"0\" /></revision></page></mediawiki>";
+        let pages: Vec<Page> = Pages::new(Cursor::new(xml))
+            .collect::<anyhow::Result<_>>()
+            .unwrap();
+        assert_eq!(pages[0].text, "");
+        // …and two empty <text/> elements are still two elements → error.
+        let xml2 = "<mediawiki><page><title>E2</title><ns>0</ns>\
+            <revision><text bytes=\"0\" /></revision>\
+            <revision><text bytes=\"0\" /></revision></page></mediawiki>";
+        let res: anyhow::Result<Vec<Page>> = Pages::new(Cursor::new(xml2)).collect();
+        assert!(
+            res.is_err(),
+            "two <text/> elements are still multi-revision"
+        );
     }
 
     #[test]
